@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.15.1",
   "description": "現代、簡潔的網頁小遊戲合輯 — 以 Vue 3 + Nuxt 打造，靜態部署於 GitHub Pages。",
   "scripts": {
     "dev": "nuxt dev",

@@ -23,14 +23,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Static build (Nuxt generate)
         env:
@@ -39,7 +42,7 @@ jobs:
           # Derived from the repo name; override here if you use a custom domain
           # (set NUXT_APP_BASE_URL: / for a custom domain or <user>.github.io repo).
           NUXT_APP_BASE_URL: /${{ github.event.repository.name }}/
-        run: npm run generate
+        run: pnpm generate
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
