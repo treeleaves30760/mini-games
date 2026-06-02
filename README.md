@@ -1,115 +1,122 @@
-# 遊樂場 Playground · 網頁小遊戲合輯
+# Playground — Web Mini-Games Collection
 
-現代、簡潔、美觀的網頁小遊戲合輯，以 **Vue 3 + Nuxt 4** 打造，靜態產生（SSG）後部署於 **GitHub Pages**。
+A modern, clean, and polished collection of web mini-games, built with **Vue 3 + Nuxt 4**, statically generated (SSG) and deployed to **GitHub Pages**.
 
-線上版：https://treeleaves30760.github.io/mini-games/
+Live demo: https://treeleaves30760.github.io/mini-games/
 
-目前收錄六款遊戲：
+It currently features **32 games** plus a **Daily Challenge**, grouped by category:
 
-| 遊戲 | 說明 | 技術 |
-| --- | --- | --- |
-| 貪食蛇 Snake | 經典街機反應遊戲 | Canvas 2D |
-| 數獨 Sudoku | 保證唯一解、三難度、即時偵錯 | 響應式 Vue |
-| 一筆畫 One Line | 歐拉路徑關卡，一筆畫完所有線段 | 響應式 SVG |
-| 2048 | 滑動合併數字方塊 | 響應式 Vue |
-| 箭頭 Arrow Out | 點箭頭讓它滑出，前方淨空才走得掉 | 響應式 Vue |
-| 立體迷宮 3D Maze | 第一人稱 3D 迷宮 + 小地圖 | Three.js / WebGL |
-
-## 特色
-
-- 純靜態、開箱即玩：`nuxt generate` 產生純靜態檔案，免伺服器、免安裝。
-- 單一註冊表驅動：所有遊戲集中在 `app/composables/useGames.ts`，新增一筆資料就能上架。
-- 統一設計系統：共用設計 token（顏色、字體、間距）與遊戲外框，外觀一致、各遊戲又有專屬主題色。
-- 響應式 + 行動裝置友善：鍵盤、滑鼠、觸控（滑動 / 點擊 / D-pad）皆可操作。
-- 無障礙細節：語意化結構、`prefers-reduced-motion`、鍵盤操作支援。
-
-## 技術棧
-
-| 項目 | 採用 |
+| Category | Games |
 | --- | --- |
-| 框架 | Vue 3（`<script setup>`）+ Nuxt 4 |
-| 轉譯模式 | 靜態產生（SSG，`nuxt generate`） |
-| 3D | Three.js（僅在用戶端動態載入） |
-| 樣式 | 原生 CSS + 設計 token（CSS 變數），無 UI 套件 |
-| 字體 | Bricolage Grotesque / Noto Sans TC / Space Mono（Google Fonts） |
-| 部署 | GitHub Pages（GitHub Actions 自動化） |
+| Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out |
+| Board (vs AI) | Gomoku, Reversi, Connect Four, Tic-Tac-Toe, Dots & Boxes |
+| Numbers | 2048, 15 Puzzle, Make 24, Mastermind |
+| Word | Word Guess, Word Search |
+| Memory | Memory, Simon |
+| Arcade | Snake, Tetris, Breakout, Match 3, Whack-a-Mole |
+| Maze | Maze, 3D Maze (Three.js) |
+| Classic | Klotski, Tower of Hanoi, Sokoban |
 
-## 本地開發
+### Daily Challenge
 
-需求：Node.js 20 以上。
+`/daily` uses **the current date as a seed** every day to pick one game from a curated, reproducible set of puzzles and generate that day's challenge — so **every player in the world gets the same puzzle on the same day**. Completing it extends your **streak**, and you can share your result with one tap.
+
+The core is the shared seeded-RNG utility `app/utils/rng.ts` (`makeRng(seed)` / `todaySeed()`). Any game can join the daily rotation simply by using it in place of `Math.random`, accepting `seed` / `daily` props, and emitting `solved` when the player wins.
+
+## Features
+
+- **Pure static, instant play**: `nuxt generate` produces fully static files — no server, no install.
+- **Daily challenge engine**: a date seed generates a "same puzzle worldwide" level, with streaks tracked locally in the browser.
+- **Single registry-driven gallery**: every game lives in `app/composables/useGames.ts`; add one entry to ship it, and the home page provides category filtering.
+- **Unified design system**: shared design tokens (colors, fonts, spacing) and a common game shell give a consistent look while each game keeps its own accent color.
+- **Responsive and mobile-friendly**: keyboard, mouse, and touch (swipe / tap / D-pad) input are all supported.
+- **Accessibility details**: semantic structure, `prefers-reduced-motion`, and keyboard operation support.
+
+## Tech Stack
+
+| Item | Choice |
+| --- | --- |
+| Framework | Vue 3 (`<script setup>`) + Nuxt 4 |
+| Render mode | Static site generation (SSG, `nuxt generate`) |
+| 3D | Three.js (dynamically imported on the client only) |
+| Styling | Native CSS + design tokens (CSS variables), no UI library |
+| Fonts | Bricolage Grotesque / Noto Sans TC / Space Mono (Google Fonts) |
+| Deployment | GitHub Pages (automated via GitHub Actions) |
+
+## Local Development
+
+Requirements: Node.js 20 or later and [pnpm](https://pnpm.io/).
 
 ```bash
-npm install        # 安裝相依套件
-npm run dev        # 開發伺服器（http://localhost:3000）
-npm run generate   # 產生靜態網站到 .output/public
-npm run preview    # 預覽 production build
+pnpm install       # install dependencies
+pnpm dev           # dev server (http://localhost:3000)
+pnpm generate      # generate the static site into .output/public
+pnpm preview       # preview the production build
 ```
 
-預覽靜態產出：`npm run generate && npx serve .output/public`
+Preview the static output: `pnpm generate && pnpm dlx serve .output/public`
 
-## 專案結構
+## Project Structure
 
 ```
 .
-├── nuxt.config.ts                 # baseURL、github_pages preset、全域 CSS、字體、元件設定
+├── nuxt.config.ts                 # baseURL, github_pages preset, global CSS, fonts, component config
 ├── app/
-│   ├── app.vue                    # 根元件（全域背景 + 版面 + 頁面）
-│   ├── assets/css/                # 設計系統：tokens / base / ui / home
-│   ├── layouts/default.vue        # 首頁版面（站台 header / footer）
+│   ├── app.vue                    # root component (global background + layout + page)
+│   ├── assets/css/                # design system: tokens / base / ui / home
+│   ├── layouts/default.vue        # home layout (site header / footer)
 │   ├── components/
-│   │   ├── AppBackground.vue      # 全域氛圍背景 + 顆粒質感
-│   │   ├── GameCard.vue           # 首頁遊戲卡片
-│   │   ├── GameTopbar.vue         # 遊戲頁共用頂部列（返回 / 標題 / 動作）
-│   │   └── games/                 # 各遊戲元件
-│   │       ├── SnakeGame.vue
-│   │       ├── SudokuGame.vue
-│   │       ├── OneLineGame.vue
-│   │       ├── Game2048.vue
-│   │       ├── ArrowsGame.vue
-│   │       └── Maze3DGame.vue     # Three.js（onMounted 動態 import）
-│   ├── composables/useGames.ts    # 遊戲註冊表（單一資料來源）
+│   │   ├── AppBackground.vue      # global ambient background + grain texture
+│   │   ├── GameCard.vue           # home-page game card
+│   │   ├── GameTopbar.vue         # shared game-page top bar (back / title / actions)
+│   │   └── games/                 # 32 game components (SnakeGame.vue, SudokuGame.vue,
+│   │                              #   MinesweeperGame.vue, GomokuGame.vue ... Maze3DGame.vue)
+│   ├── composables/useGames.ts    # game registry + categories (single source of truth)
 │   ├── pages/
-│   │   ├── index.vue              # 首頁（hero + 遊戲牆）
-│   │   └── games/                 # 每款遊戲一個路由（snake / sudoku / one-line / 2048 / arrows / maze-3d）
-│   └── utils/sudoku.ts            # 數獨產生器 / 解題器
+│   │   ├── index.vue              # home page (hero + category filter + game wall)
+│   │   ├── daily.vue              # Daily Challenge (date-picked game, seeded, streak tracking)
+│   │   └── games/                 # one route per game (snake / sudoku / minesweeper / gomoku ...)
+│   └── utils/
+│       ├── sudoku.ts              # Sudoku generator / solver
+│       └── rng.ts                 # seeded RNG (makeRng / todaySeed) — the basis of the Daily Challenge
 ├── public/favicon.svg
-└── .github/workflows/deploy.yml   # GitHub Pages 自動部署
+└── .github/workflows/deploy.yml   # GitHub Pages automatic deployment
 ```
 
-說明：因為元件設定為 `components: [{ path: '~/components', pathPrefix: false }]`，
-所以 `components/games/SnakeGame.vue` 的標籤就是 `<SnakeGame/>`（不帶資料夾前綴）。
+Note: because the component config is set to `components: [{ path: '~/components', pathPrefix: false }]`, the tag for `components/games/SnakeGame.vue` is simply `<SnakeGame/>` (no directory prefix).
 
-## 如何新增一款遊戲
+## How to Add a Game
 
-### A. 原生 Vue 遊戲（推薦）
+### A. Native Vue game (recommended)
 
-1. 在 `app/components/games/` 新增元件，例如 `Game2048.vue`。
-   - 用 `<div class="game-page" :style="{ '--accent': '#你的主題色' }">` 當根節點。
-   - 放入 `<GameTopbar title="..." title-en="...">`、`.stage`、`.panel` 等共用外框。
-2. 在 `app/pages/games/` 新增頁面，並設定 `definePageMeta({ layout: false })`、用 `useHead` 設定標題，模板放入你的遊戲元件。
-3. 在 `app/composables/useGames.ts` 的 `GAMES` 陣列加入一筆，`available` 設為 `true`，附上 `to`、`accent`、`icon`。首頁卡片牆會自動長出這張卡片。
+1. Add a component under `app/components/games/`, e.g. `Game2048.vue`.
+   - Use `<div class="game-page" :style="{ '--accent': '#your-accent' }">` as the root node.
+   - Include the shared shell: `<GameTopbar title="..." title-en="...">`, `.stage`, `.panel`, etc.
+2. Add a page under `app/pages/games/`, set `definePageMeta({ layout: false })`, set the title with `useHead`, and place your game component in the template.
+3. Add one entry to the `GAMES` array in `app/composables/useGames.ts` with `available: true`, along with `to`, `accent`, `category`, and `icon`. The home-page card wall grows the new card automatically.
 
-### B. 3D 遊戲（Three.js）
+> **Make a game daily-ready**: accept `seed` / `daily` props, generate the puzzle with `const rng = makeRng(props.seed)` (replacing `Math.random`), regenerate via `watch(() => props.seed, ...)`, and emit `solved` on a win (`emit('solved', {...})`). When `daily` is true, hide difficulty/new-puzzle controls. Finally, add it to the `ROTATION` in `app/pages/daily.vue`.
 
-參考 `Maze3DGame.vue`：在 `onMounted` 內以 `await import('three')` 動態載入（確保只在用戶端執行、不影響 SSG），並在 `onBeforeUnmount` 釋放資源（`renderer.dispose()`、`cancelAnimationFrame`）。
+### B. 3D game (Three.js)
 
-### C. 打包成品（Pygame / Unity）
+See `Maze3DGame.vue`: dynamically load Three.js inside `onMounted` with `await import('three')` (ensuring it runs only on the client and does not affect SSG), and release resources in `onBeforeUnmount` (`renderer.dispose()`, `cancelAnimationFrame`).
 
-1. 把匯出的 WebGL / pygbag 成品（含 `index.html`）放到 `public/embeds/<game>/`。
-2. 做一個內嵌頁面，用 `<iframe>` 載入該資料夾，套用 `GameTopbar` 外框。
-3. 在註冊表加入該遊戲（`type: "iframe"`）。
+### C. Packaged build (Pygame / Unity)
 
-因為已啟用 `github_pages` preset 並輸出 `.nojekyll`，`public/` 內的任何靜態檔都會原樣部署。
+1. Place the exported WebGL / pygbag build (including its `index.html`) under `public/embeds/<game>/`.
+2. Create an embed page that loads the folder with an `<iframe>` and applies the `GameTopbar` shell.
+3. Add the game to the registry (`type: "iframe"`).
 
-## 部署到 GitHub Pages
+Because the `github_pages` preset is enabled and outputs `.nojekyll`, any static file under `public/` is deployed as-is.
 
-已內建 GitHub Actions 工作流程（`.github/workflows/deploy.yml`）：推送到 `main` 後會自動
-`npm ci` → `npm run generate` → 部署到 Pages。base URL 由工作流程依 repo 名稱自動帶入
-（`NUXT_APP_BASE_URL=/<repo>/`）。
+## Deploying to GitHub Pages
 
-首次需到 repo 的 **Settings → Pages → Source** 選擇 **GitHub Actions**。
-若使用自訂網域，或 repo 名為 `<帳號>.github.io`，請把 `deploy.yml` 中的 `NUXT_APP_BASE_URL` 改成 `/`。
+A GitHub Actions workflow is included (`.github/workflows/deploy.yml`): pushing to `main` automatically runs `pnpm install --frozen-lockfile` → `pnpm generate` → deploy to Pages. The base URL is derived from the repository name by the workflow (`NUXT_APP_BASE_URL=/<repo>/`).
 
-## 授權
+First-time setup: go to the repo's **Settings → Pages → Source** and select **GitHub Actions**.
 
-MIT — 歡迎自由取用、修改、擴充。
+If you use a custom domain, or the repo is named `<account>.github.io`, change `NUXT_APP_BASE_URL` in `deploy.yml` to `/`.
+
+## License
+
+MIT — free to use, modify, and extend.
