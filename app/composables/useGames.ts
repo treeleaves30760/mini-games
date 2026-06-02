@@ -207,16 +207,32 @@ const GAMES: Game[] = [
       </svg>`,
   },
 
-  /* ---- Future games (ghost card advertises the roadmap & extensibility) ---- */
   {
     id: "memory",
     title: "記憶翻牌",
     titleEn: "Memory",
-    desc: "翻開配對的卡片，考驗你的記憶力。",
-    tags: ["即將推出"],
+    desc: "翻牌配對，記住每張卡的位置，用最少步數翻出所有成對的卡片。",
+    tags: ["記憶", "配對"],
     accent: "#ff7a9c",
+    type: "native",
+    to: "/games/memory",
     layout: "wide",
-    available: false,
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g transform="rotate(-8 40 60)">
+          <rect x="16" y="26" width="46" height="64" rx="10" fill="var(--ink-700)" stroke="var(--accent)" stroke-width="2.4"/>
+          <g fill="var(--accent)" fill-opacity="0.5">
+            <circle cx="30" cy="44" r="3.4"/><circle cx="48" cy="44" r="3.4"/>
+            <circle cx="30" cy="60" r="3.4"/><circle cx="48" cy="60" r="3.4"/>
+            <circle cx="39" cy="74" r="3.4"/>
+          </g>
+        </g>
+        <g transform="rotate(9 82 62)">
+          <rect x="58" y="28" width="48" height="66" rx="11" fill="var(--accent)" fill-opacity="0.16" stroke="var(--accent)" stroke-width="2.6"/>
+          <path d="M82 46 l8 15 -8 15 -8 -15 z" fill="var(--accent)"/>
+        </g>
+      </svg>`,
   },
 ];
 
