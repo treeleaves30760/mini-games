@@ -1,0 +1,338 @@
+/* =========================================================================
+   Game shell — shared chrome for every game page: top bar, back button,
+   layout scaffold, HUD stat chips, side panel, dialog overlay, toast.
+   A game page sets --accent on :root (via a small inline style or class)
+   and everything tints automatically.
+   ========================================================================= */
+
+.game-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* ---- Top bar ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem clamp(1rem, 4vw, 2.5rem);
+  background: color-mix(in oklab, var(--ink-900) 78%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.9rem 0.5rem 0.7rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  transition: color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.topbar__back:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--ink-700);
+  transform: translateX(-2px);
+}
+.topbar__back svg {
+  width: 16px;
+  height: 16px;
+}
+
+.topbar__title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-inline-start: 0.2rem;
+}
+.topbar__title h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 2.4vw, 1.5rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.topbar__title .en {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.topbar__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 14px var(--accent);
+}
+
+.topbar__spacer {
+  flex: 1;
+}
+
+.topbar__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ---- Stage: main play area ---- */
+.stage {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: center;
+  gap: clamp(1rem, 3vw, 2rem);
+  padding: clamp(1.2rem, 4vw, 2.5rem);
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+.stage__main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* ---- HUD chips (score / time / etc.) ---- */
+.hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  justify-content: center;
+}
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 92px;
+  padding: 0.6rem 1rem;
+  border-radius: var(--r-md);
+  background: var(--ink-800);
+  border: 1px solid var(--line);
+}
+.chip__label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.chip__value {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.chip__value.is-accent {
+  color: var(--accent);
+}
+
+/* ---- Side panel (controls / settings / levels) ---- */
+.panel {
+  width: min(320px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1.3rem;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--ink-800), var(--ink-850));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
+}
+.panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.panel__legend {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Segmented control */
+.seg {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  border: 1px solid var(--line);
+}
+.seg button {
+  flex: 1;
+  padding: 0.5rem 0.4rem;
+  border-radius: calc(var(--r-sm) - 4px);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.seg button[aria-pressed="true"],
+.seg button.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Toggle row */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  font-size: 0.92rem;
+}
+.switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--ink-600);
+  border: 1px solid var(--line);
+  transition: background var(--dur-fast) var(--ease);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.switch[aria-checked="true"] {
+  background: var(--accent);
+}
+.switch[aria-checked="true"]::after {
+  transform: translateX(20px);
+  background: var(--accent-ink);
+}
+
+.hint {
+  font-size: 0.84rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.hint kbd {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  padding: 0.1em 0.45em;
+  border-radius: 6px;
+  background: var(--ink-700);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+/* ---- Overlay dialog (game over / win / pause) ---- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: color-mix(in oklab, var(--ink-900) 72%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur) var(--ease), visibility var(--dur) var(--ease);
+  z-index: 10;
+}
+.overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+.overlay__card {
+  width: min(360px, 100%);
+  padding: 2rem;
+  text-align: center;
+  border-radius: var(--r-lg);
+  background: var(--ink-800);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-3);
+  transform: translateY(12px) scale(0.97);
+  transition: transform var(--dur) var(--ease-out);
+}
+.overlay.is-open .overlay__card {
+  transform: translateY(0) scale(1);
+}
+.overlay__title {
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 800;
+  margin-bottom: 0.4rem;
+}
+.overlay__sub {
+  color: var(--text-dim);
+  margin-bottom: 1.4rem;
+}
+.overlay__actions {
+  display: flex;
+  gap: 0.7rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* relative wrapper so overlay can absolutely position over a board */
+.board-wrap {
+  position: relative;
+}
+
+/* ---- Mobile control pad (D-pad) shared base ---- */
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-template-rows: repeat(3, 56px);
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.dpad button {
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--ink-700);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 1.3rem;
+  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.dpad button:active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  transform: scale(0.94);
+}
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+
+@media (min-width: 760px) {
+  .show-touch-only { display: none; }
+}

@@ -1,0 +1,66 @@
+/* =========================================================================
+   Design Tokens — shared across the hub and every game page.
+   One source of truth for color, type, spacing, motion.
+   ========================================================================= */
+
+:root {
+  /* ---- Ink palette (dark, slightly warm near-black) ---- */
+  --ink-900: #0a0b0f;
+  --ink-850: #0d0f14;
+  --ink-800: #11141b;
+  --ink-700: #171b24;
+  --ink-600: #1f2531;
+  --ink-500: #2a3140;
+
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  --text: #edf0f5;
+  --text-dim: #969eae;
+  --text-faint: #5c6473;
+
+  /* ---- Per-game signature accents ---- */
+  --acc-snake: #9ce85a;   /* lime  */
+  --acc-sudoku: #6aa6ff;  /* azure */
+  --acc-oneline: #ffb057; /* amber */
+  --acc-memory: #ff7a9c;  /* rose   (reserved for future) */
+  --acc-2048: #c79bff;    /* violet (reserved for future) */
+
+  /* Generic accent — pages override --accent with their game color */
+  --accent: #9ce85a;
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --accent-ink: #0a0b0f;
+
+  /* ---- Typography ---- */
+  --font-display: "Bricolage Grotesque", "Noto Sans TC", system-ui, sans-serif;
+  --font-body: "Noto Sans TC", "Bricolage Grotesque", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* fluid type scale */
+  --fs-eyebrow: 0.78rem;
+  --fs-body: 1rem;
+  --fs-lead: clamp(1.05rem, 1.6vw, 1.25rem);
+  --fs-h3: clamp(1.25rem, 2.2vw, 1.6rem);
+  --fs-h2: clamp(1.8rem, 4vw, 2.8rem);
+  --fs-h1: clamp(2.6rem, 7vw, 5.5rem);
+
+  /* ---- Spacing / radius ---- */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --r-xl: 36px;
+  --r-pill: 999px;
+
+  /* ---- Elevation ---- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 14px 40px -18px rgba(0, 0, 0, 0.7);
+  --shadow-3: 0 30px 80px -30px rgba(0, 0, 0, 0.8);
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 0.18s;
+  --dur: 0.32s;
+  --dur-slow: 0.6s;
+}
