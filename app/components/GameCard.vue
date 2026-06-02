@@ -34,11 +34,15 @@ const layoutClass = computed(() => {
   <NuxtLink
     v-else
     class="card"
-    :class="layoutClass"
+    :class="[layoutClass, { 'card--daily': game.daily }]"
     :to="game.to"
     :style="{ '--accent': game.accent }"
     :aria-label="`${game.title} — ${game.desc}`"
   >
+    <span v-if="game.daily" class="card__badge">
+      <span class="card__badge-dot" aria-hidden="true" />
+      每日更新
+    </span>
     <div class="card__visual" v-html="game.icon" />
     <div class="card__tags">
       <span v-for="t in game.tags" :key="t" class="tag">{{ t }}</span>
@@ -48,7 +52,7 @@ const layoutClass = computed(() => {
     </h3>
     <p class="card__desc">{{ game.desc }}</p>
     <span class="card__cta">
-      開始遊戲
+      {{ game.daily ? "開始今日挑戰" : "開始遊戲" }}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
         stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
     </span>

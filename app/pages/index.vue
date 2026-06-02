@@ -1,8 +1,22 @@
 <script setup>
 const { games, playable, total } = useGames();
 
+const selectedCat = ref("全部");
+const filtered = computed(() =>
+  games.filter(
+    (g) =>
+      g.daily || selectedCat.value === "全部" || g.category === selectedCat.value
+  )
+);
+
+// Only show category chips that actually have games behind them.
+const cats = computed(() => {
+  const present = new Set(games.filter((g) => !g.daily).map((g) => g.category));
+  return CATEGORIES.filter((c) => c === "全部" || present.has(c));
+});
+
 useHead({
-  title: "遊樂場 · Playground — 網頁小遊戲合輯",
+  title: "遊樂場 · Playground — 30+ 款網頁小遊戲與每日挑戰",
 });
 </script>
 
@@ -15,8 +29,8 @@ useHead({
         在瀏覽器裡，<br />玩一場<span class="grad">好遊戲</span>。
       </h1>
       <p class="hero-sub reveal d2">
-        精選經典網頁小遊戲，以 Vue + Nuxt 打造、無需安裝，開啟即玩。
-        介面簡潔現代，並為未來的 3D 與打包遊戲預留了擴充空間。
+        超過 30 款精選益智、解謎、棋類與街機小遊戲，以 Vue + Nuxt 打造、無需安裝，開啟即玩。
+        還有<strong>每日挑戰</strong>——每天用當天日期生成一道全世界同題的關卡。
       </p>
       <div class="hero-meta reveal d3">
         <div class="hero-meta__item">
@@ -24,13 +38,21 @@ useHead({
           <div class="lbl">款可立即遊玩</div>
         </div>
         <div class="hero-meta__item">
-          <div class="num">{{ total }}</div>
-          <div class="lbl">款規劃藍圖</div>
+          <div class="num">1</div>
+          <div class="lbl">道每日挑戰</div>
         </div>
         <div class="hero-meta__item">
           <div class="num">0</div>
           <div class="lbl">需要安裝</div>
         </div>
+      </div>
+      <div class="hero-cta reveal d3">
+        <NuxtLink to="/daily" class="btn btn--accent hero-cta__daily">
+          🗓 今日挑戰
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+            stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </NuxtLink>
+        <a href="#games" class="btn btn--ghost">瀏覽全部遊戲</a>
       </div>
     </section>
 
@@ -38,10 +60,25 @@ useHead({
     <section class="wrap" id="games">
       <div class="section-head">
         <h2>選一款開始</h2>
-        <span class="count">{{ playable }} 款可玩 / {{ total }} 款規劃中</span>
+        <span class="count">{{ playable }} 款可玩</span>
       </div>
+
+      <div class="cat-filter" role="tablist" aria-label="遊戲分類">
+        <button
+          v-for="c in cats"
+          :key="c"
+          class="cat-chip"
+          :class="{ 'is-active': selectedCat === c }"
+          role="tab"
+          :aria-selected="selectedCat === c"
+          @click="selectedCat = c"
+        >
+          {{ c }}
+        </button>
+      </div>
+
       <div class="gallery">
-        <GameCard v-for="g in games" :key="g.id" :game="g" />
+        <GameCard v-for="g in filtered" :key="g.id" :game="g" />
       </div>
     </section>
 
@@ -66,6 +103,18 @@ useHead({
           <p>所有遊戲由 <code>composables/useGames.ts</code> 註冊表驅動，新增一筆資料、放入頁面即可上架。</p>
         </div>
         <div class="ext">
+          <div class="ext__icon" style="color: var(--acc-2048)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="3" />
+              <path d="M3 9h18M8 4v5" />
+              <path d="m15 13 2 2-2 2" />
+            </svg>
+          </div>
+          <h3>每日挑戰引擎</h3>
+          <p>共用的種子亂數工具 <code>utils/rng.ts</code> 讓任何遊戲都能用日期生成「全世界同題」的關卡。</p>
+        </div>
+        <div class="ext">
           <div class="ext__icon" style="color: #5ce0c6">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
               stroke-linejoin="round">
@@ -75,18 +124,6 @@ useHead({
           </div>
           <h3>已支援 3D（Three.js）</h3>
           <p>立體迷宮已用 Three.js 實作；每款遊戲都是獨立 Vue 元件，可持續加入更多 WebGL 3D 遊戲。</p>
-        </div>
-        <div class="ext">
-          <div class="ext__icon" style="color: #c79bff">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linejoin="round">
-              <path d="M21 8 L12 3 L3 8 L12 13 Z" />
-              <path d="M3 8 V16 L12 21 L21 16 V8" />
-              <path d="M12 13 V21" opacity="0.6" />
-            </svg>
-          </div>
-          <h3>嵌入打包成品</h3>
-          <p>Pygame（pygbag）或 Unity（WebGL）匯出的成品可放入 <code>public/</code>，以 iframe 內嵌遊玩。</p>
         </div>
         <div class="ext">
           <div class="ext__icon" style="color: var(--acc-oneline)">
