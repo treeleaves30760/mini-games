@@ -113,6 +113,34 @@ const GAMES: Game[] = [
         </g>
       </svg>`,
   },
+  {
+    id: "shikaku",
+    title: "四角",
+    titleEn: "Shikaku",
+    desc: "把方格切成長方形，每個長方形剛好框住一個數字，且格子數要等於那個數字。",
+    tags: ["益智", "邏輯"],
+    accent: "#34d399",
+    type: "native",
+    to: "/games/shikaku",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="6" y="6" width="108" height="108" rx="12" stroke="var(--accent)" stroke-width="2.5" opacity="0.45"/>
+        <g stroke="var(--text-faint)" stroke-width="1.2" opacity="0.7">
+          <path d="M33 8v104M60 8v104M87 8v104M8 33h104M8 60h104M8 87h104"/>
+        </g>
+        <rect x="63" y="36" width="48" height="48" rx="9"
+              fill="var(--accent)" fill-opacity="0.2" stroke="var(--accent)" stroke-width="2.6"/>
+        <rect x="10" y="63" width="22" height="48" rx="8"
+              fill="var(--accent)" fill-opacity="0.14" stroke="var(--accent)" stroke-width="2.2"/>
+        <g fill="var(--text)" font-family="'Space Mono', ui-monospace, monospace" font-size="20" font-weight="700" text-anchor="middle">
+          <text x="20" y="30">4</text>
+          <text x="87" y="67" fill="var(--accent)">9</text>
+          <text x="21" y="93">2</text>
+        </g>
+      </svg>`,
+  },
 
   {
     id: "2048",

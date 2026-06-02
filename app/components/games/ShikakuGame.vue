@@ -81,12 +81,17 @@ const solvedCount = computed(() => rects.value.filter((R) => rectState(R) === "v
 function genShikaku(R, C, maxArea) {
   const leaves = [];
   const rnd = (n) => (Math.random() * n) | 0;
-  // bigger pieces are likelier to be split again → a varied mix of rectangles
+  // chance a piece (already within the size cap) stops as a leaf rather than
+  // splitting again. High for small pieces so 2-cell dominoes rarely shatter
+  // into 1×1s; eased down for cap-sized pieces so they sometimes break up and
+  // feed the mid-range — yielding chunky, screenshot-like rectangles (≈4-7% 1s).
   function pStop(area) {
     if (area > maxArea) return 0;
     if (area <= 1) return 1;
-    return Math.min(0.92, Math.max(0.06, 0.95 - area / maxArea));
+    return Math.min(0.94, Math.max(0.66, 0.96 - (0.3 * (area - 2)) / (maxArea - 2)));
   }
+  // centre-biased cut (mean of two uniform draws) → balanced pieces, few slivers
+  const cutAt = (len) => 1 + Math.floor((rnd(len - 1) + rnd(len - 1)) / 2);
   function split(r0, c0, r1, c1) {
     const h = r1 - r0 + 1;
     const w = c1 - c0 + 1;
@@ -102,13 +107,13 @@ function genShikaku(R, C, maxArea) {
     else if (w > h) horiz = Math.random() < 0.28;
     else horiz = Math.random() < 0.5;
     if (horiz) {
-      const cut = r0 + 1 + rnd(h - 1);
-      split(r0, c0, cut - 1, c1);
-      split(cut, c0, r1, c1);
+      const k = cutAt(h);
+      split(r0, c0, r0 + k - 1, c1);
+      split(r0 + k, c0, r1, c1);
     } else {
-      const cut = c0 + 1 + rnd(w - 1);
-      split(r0, c0, r1, cut - 1);
-      split(r0, cut, r1, c1);
+      const k = cutAt(w);
+      split(r0, c0, r1, c0 + k - 1);
+      split(r0, c0 + k, r1, c1);
     }
   }
   split(0, 0, R - 1, C - 1);
