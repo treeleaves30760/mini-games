@@ -114,7 +114,72 @@ const GAMES: Game[] = [
       </svg>`,
   },
 
-  /* ---- Future games (ghost cards advertise the roadmap & extensibility) ---- */
+  {
+    id: "2048",
+    title: "2048",
+    titleEn: "2048",
+    desc: "滑動合併相同的數字方塊，一路挑戰到 2048。",
+    tags: ["益智", "數字"],
+    accent: "#c79bff",
+    type: "native",
+    to: "/games/2048",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="10" y="10" width="46" height="46" rx="10" fill="var(--accent)" fill-opacity="0.25"/>
+        <rect x="64" y="10" width="46" height="46" rx="10" fill="var(--accent)" fill-opacity="0.45"/>
+        <rect x="10" y="64" width="46" height="46" rx="10" fill="var(--accent)" fill-opacity="0.7"/>
+        <rect x="64" y="64" width="46" height="46" rx="10" fill="var(--accent)"/>
+        <g font-family="'Space Mono', ui-monospace, monospace" font-weight="700" text-anchor="middle">
+          <text x="33" y="40" font-size="18" fill="var(--text)">2</text>
+          <text x="87" y="40" font-size="18" fill="var(--text)">4</text>
+          <text x="33" y="94" font-size="18" fill="#0a0b0f">8</text>
+          <text x="87" y="93" font-size="15" fill="#0a0b0f">16</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "arrows",
+    title: "箭頭",
+    titleEn: "Arrow Out",
+    desc: "點箭頭讓它往所指方向滑出，但前方要淨空才走得掉。清空全場即過關。",
+    tags: ["益智", "觀察"],
+    accent: "#9aa6ff",
+    type: "native",
+    to: "/games/arrows",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" stroke="var(--accent)" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M30 80 V40 M18 52 L30 40 L42 52"/>
+        <path d="M56 32 H98 M86 20 L98 32 L86 44"/>
+        <path d="M72 56 V96 M60 84 L72 96 L84 84"/>
+        <path d="M104 76 H66 M78 64 L66 76 L78 88"/>
+      </svg>`,
+  },
+  {
+    id: "maze3d",
+    title: "立體迷宮",
+    titleEn: "3D Maze",
+    desc: "以 Three.js 即時渲染的第一人稱迷宮，靠小地圖找到發光的出口。",
+    tags: ["3D", "迷宮"],
+    accent: "#5ce0c6",
+    type: "native",
+    to: "/games/maze-3d",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" stroke="var(--accent)" stroke-width="4"
+        stroke-linejoin="round" aria-hidden="true">
+        <path d="M60 16 L102 40 L102 84 L60 108 L18 84 L18 40 Z"/>
+        <path d="M60 60 L60 16 M60 60 L102 40 M60 60 L18 40" opacity="0.45"/>
+        <circle cx="80" cy="62" r="6" fill="var(--accent)" stroke="none"/>
+      </svg>`,
+  },
+
+  /* ---- Future games (ghost card advertises the roadmap & extensibility) ---- */
   {
     id: "memory",
     title: "記憶翻牌",
@@ -122,27 +187,7 @@ const GAMES: Game[] = [
     desc: "翻開配對的卡片，考驗你的記憶力。",
     tags: ["即將推出"],
     accent: "#ff7a9c",
-    layout: "normal",
-    available: false,
-  },
-  {
-    id: "2048",
-    title: "2048",
-    titleEn: "2048",
-    desc: "滑動合併數字方塊，挑戰 2048。",
-    tags: ["即將推出"],
-    accent: "#c79bff",
-    layout: "normal",
-    available: false,
-  },
-  {
-    id: "maze3d",
-    title: "立體迷宮",
-    titleEn: "3D Maze · Three.js",
-    desc: "以 Three.js 打造的第一人稱 3D 迷宮，展示 3D 遊戲擴充能力。",
-    tags: ["3D", "即將推出"],
-    accent: "#5ce0c6",
-    layout: "normal",
+    layout: "wide",
     available: false,
   },
 ];

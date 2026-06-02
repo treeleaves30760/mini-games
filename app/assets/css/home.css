@@ -327,8 +327,11 @@
   border: 1px solid var(--line);
 }
 .ext__icon {
-  font-size: 1.4rem;
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+.ext__icon svg {
+  width: 30px;
+  height: 30px;
 }
 .ext h3 {
   font-family: var(--font-display);
