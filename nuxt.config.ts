@@ -21,7 +21,7 @@ export default defineNuxtConfig({
         {
           name: "description",
           content:
-            "精選網頁小遊戲合輯：貪食蛇、數獨、一筆畫。簡潔現代的介面，無需安裝，開啟即玩。以 Vue + Nuxt 打造。",
+            "超過 30 款精選網頁小遊戲：數獨、踩地雷、數織、五子棋、2048、貪食蛇等益智解謎與棋類遊戲，還有每日挑戰。簡潔現代、無需安裝，開啟即玩。以 Vue + Nuxt 打造。",
         },
         { name: "theme-color", content: "#0a0b0f" },
       ],

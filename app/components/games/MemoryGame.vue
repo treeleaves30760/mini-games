@@ -3,6 +3,12 @@
    mismatch flips back. Clear every pair in as few moves as you can. Deck is a
    shuffled set of emoji pairs sized to the chosen board. */
 
+const props = defineProps({
+  seed: { type: [String, Number], default: null },
+  daily: { type: Boolean, default: false },
+});
+const emit = defineEmits(["solved"]);
+
 const accent = "#ff7a9c";
 const BEST_KEY = "playground.memory.best.";
 
@@ -34,22 +40,17 @@ let timerH = null;
 const totalPairs = computed(() => (cols.value * rows.value) / 2);
 const diffLabel = computed(() => DIFFS.find((d) => d.key === difficulty.value)?.label || "");
 
-function shuffle(a) {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 function newGame(diffKey) {
-  if (diffKey) difficulty.value = diffKey;
+  // Daily challenge is a fixed 4×4 board generated from the date seed.
+  if (props.daily) difficulty.value = "medium";
+  else if (diffKey) difficulty.value = diffKey;
   const d = DIFFS.find((x) => x.key === difficulty.value);
   cols.value = d.cols;
   rows.value = d.rows;
   const pairs = (d.cols * d.rows) / 2;
   const syms = SYMBOLS.slice(0, pairs);
-  cards.value = shuffle([...syms, ...syms]).map((sym, i) => ({
+  const rng = makeRng(props.seed);
+  cards.value = rng.shuffle([...syms, ...syms]).map((sym, i) => ({
     id: i + 1,
     sym,
     flipped: false,
@@ -111,7 +112,10 @@ function win() {
     best.value = seconds.value;
     isRecord.value = true;
   }
+  emit("solved", { moves: moves.value, time: seconds.value });
 }
+
+watch(() => props.seed, () => newGame());
 
 function startTimer() {
   stopTimer();
@@ -137,7 +141,7 @@ onBeforeUnmount(() => stopTimer());
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="記憶翻牌" title-en="Memory">
       <template #actions>
-        <button class="btn btn--accent" @click="newGame()">新遊戲</button>
+        <button v-if="!daily" class="btn btn--accent" @click="newGame()">新遊戲</button>
       </template>
     </GameTopbar>
 
@@ -192,7 +196,8 @@ onBeforeUnmount(() => stopTimer());
                 難度 {{ diffLabel }}　·　{{ moves }} 步　·　用時 {{ timeStr }}{{ isRecord ? "（最佳）" : ` · 最佳 ${bestStr}` }}
               </p>
               <div class="overlay__actions">
-                <button class="btn btn--accent" @click="newGame()">再來一局</button>
+                <button v-if="!daily" class="btn btn--accent" @click="newGame()">再來一局</button>
+                <span v-else class="hint">今日挑戰完成 🎉</span>
               </div>
             </div>
           </div>
@@ -200,7 +205,7 @@ onBeforeUnmount(() => stopTimer());
       </div>
 
       <aside class="panel">
-        <div class="panel__group">
+        <div v-if="!daily" class="panel__group">
           <span class="panel__legend">難度</span>
           <div class="seg" role="group" aria-label="難度選擇">
             <button
@@ -236,8 +241,12 @@ onBeforeUnmount(() => stopTimer());
 .mboard {
   display: grid;
   grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-rows: repeat(var(--rows), 1fr);
   gap: clamp(6px, 1.7vw, 12px);
   width: min(94vw, 58vh * var(--cols) / var(--rows), 480px);
+  /* Pin height to match width scaled by the row/col ratio so rows never
+     size to content and cause layout shift during card flips. */
+  height: calc(min(94vw, 58vh * var(--cols) / var(--rows), 480px) * var(--rows) / var(--cols));
   container-type: inline-size;
 }
 .mcard {
@@ -306,5 +315,9 @@ onBeforeUnmount(() => stopTimer());
   0% { transform: scale(1); }
   40% { transform: scale(1.07); }
   100% { transform: scale(1); }
+}
+
+.board-wrap .overlay {
+  border-radius: var(--r-lg);
 }
 </style>
