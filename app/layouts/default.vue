@@ -20,7 +20,7 @@ const year = new Date().getFullYear();
         <nav class="site-nav">
           <a href="#games">遊戲</a>
           <a href="#extend" class="nav-hide">擴充</a>
-          <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/treeleaves30760/mini-games" target="_blank" rel="noopener">GitHub</a>
         </nav>
       </div>
     </header>
@@ -34,7 +34,7 @@ const year = new Date().getFullYear();
         <p>© {{ year }} 遊樂場 Playground · 以 Vue + Nuxt 打造的靜態網站</p>
         <p>
           Built for GitHub Pages ·
-          <a href="https://github.com" target="_blank" rel="noopener">原始碼</a>
+          <a href="https://github.com/treeleaves30760/mini-games" target="_blank" rel="noopener">原始碼</a>
         </p>
       </div>
     </footer>
