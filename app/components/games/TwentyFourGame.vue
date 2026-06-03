@@ -26,7 +26,20 @@ function rsub(a, b) { return rat(a.n * b.d - b.n * a.d, a.d * b.d); }
 function rmul(a, b) { return rat(a.n * b.n, a.d * b.d); }
 function rdiv(a, b) { if (b.n === 0) return null; return rat(a.n * b.d, a.d * b.n); }
 function req(a, b) { return a !== null && b !== null && a.n === b.n && a.d === b.d; }
-const TARGET = rat(24);
+
+/* Targets are factor-rich numbers so four 1–9 cards can still reach them many ways.
+   24 is the classic; 36 / 48 / 60 add variety and a touch more challenge. */
+const TARGET_POOL = [24, 36, 48, 60];
+const TARGET_MODES = [
+  { v: 'mix', label: '隨機' },
+  { v: '24', label: '24' },
+  { v: '36', label: '36' },
+  { v: '48', label: '48' },
+  { v: '60', label: '60' },
+];
+const targetMode = ref('mix');          // 'mix' | '24' | '36' | '48' | '60'
+const target = ref(24);                 // the current puzzle's goal number
+const targetRat = computed(() => rat(target.value));
 
 function applyOp(op, a, b) {
   if (op === '+') return radd(a, b);
@@ -48,7 +61,7 @@ function* permutations(arr) {
 
 const OPS = ['+','-','*','/'];
 
-function solve24(nums) {
+function solveFor(nums, tr) {
   const rats = nums.map(n => rat(n));
   for (const perm of permutations([0,1,2,3])) {
     const [a,b,c,d] = perm.map(i => rats[i]);
@@ -61,7 +74,7 @@ function solve24(nums) {
           const abc = applyOp(o2,ab,c);
           if (abc) {
             const abcd = applyOp(o3,abc,d);
-            if (abcd && req(abcd,TARGET))
+            if (abcd && req(abcd, tr))
               return `((${na}${o1}${nb})${o2}${nc})${o3}${nd}`;
           }
         }
@@ -73,7 +86,7 @@ function solve24(nums) {
           const abc = applyOp(o1,a,bc);
           if (abc) {
             const abcd = applyOp(o3,abc,d);
-            if (abcd && req(abcd,TARGET))
+            if (abcd && req(abcd, tr))
               return `(${na}${o1}(${nb}${o2}${nc}))${o3}${nd}`;
           }
         }
@@ -84,7 +97,7 @@ function solve24(nums) {
         const cd = applyOp(o3,c,d);
         if (ab && cd) {
           const abcd = applyOp(o2,ab,cd);
-          if (abcd && req(abcd,TARGET))
+          if (abcd && req(abcd, tr))
             return `(${na}${o1}${nb})${o2}(${nc}${o3}${nd})`;
         }
       }
@@ -95,7 +108,7 @@ function solve24(nums) {
           const bcd = applyOp(o3,bc,d);
           if (bcd) {
             const abcd = applyOp(o1,a,bcd);
-            if (abcd && req(abcd,TARGET))
+            if (abcd && req(abcd, tr))
               return `${na}${o1}((${nb}${o2}${nc})${o3}${nd})`;
           }
         }
@@ -107,7 +120,7 @@ function solve24(nums) {
           const bcd = applyOp(o2,b,cd);
           if (bcd) {
             const abcd = applyOp(o1,a,bcd);
-            if (abcd && req(abcd,TARGET))
+            if (abcd && req(abcd, tr))
               return `${na}${o1}(${nb}${o2}(${nc}${o3}${nd}))`;
           }
         }
@@ -129,13 +142,30 @@ function prettySolution(expr) {
 }
 
 // ---- generate puzzle ----
+function chooseTarget(rng) {
+  if (targetMode.value === 'mix') return rng.pick(TARGET_POOL);
+  const n = Number(targetMode.value);
+  return TARGET_POOL.includes(n) ? n : 24;
+}
+
+// Known-solvable fallbacks per target (used only if 600 random draws all fail).
+const FALLBACKS = {
+  24: { nums: [3, 3, 8, 8], solution: '8/(3-8/3)' },
+  36: { nums: [9, 9, 9, 9], solution: '((9+9)+9)+9' },
+  48: { nums: [6, 8, 1, 1], solution: '((6*8)*1)*1' },
+  60: { nums: [5, 6, 2, 1], solution: '((5*6)*2)*1' },
+};
+
 function genPuzzle(rng) {
-  for (let i = 0; i < 500; i++) {
+  const goal = chooseTarget(rng);
+  const tr = rat(goal);
+  for (let i = 0; i < 600; i++) {
     const nums = [rng.int(1,9), rng.int(1,9), rng.int(1,9), rng.int(1,9)];
-    const sol = solve24(nums);
-    if (sol) return { nums, solution: sol };
+    const sol = solveFor(nums, tr);
+    if (sol) return { nums, solution: sol, target: goal };
   }
-  return { nums: [3,3,8,8], solution: '8/(3-8/3)' }; // fallback (known solvable)
+  const fb = FALLBACKS[goal] || FALLBACKS[24];
+  return { nums: fb.nums, solution: fb.solution, target: FALLBACKS[goal] ? goal : 24 };
 }
 
 // ---- game state ----
@@ -168,10 +198,17 @@ function regenerate() {
   const puzzle = genPuzzle(rng);
   nums.value = puzzle.nums;
   solution.value = puzzle.solution;
+  target.value = puzzle.target;
   initCards(puzzle.nums);
 }
 
 watch(() => props.seed, regenerate);
+
+function setTargetMode(v) {
+  if (targetMode.value === v) return;
+  targetMode.value = v;
+  regenerate();
+}
 
 // ---- interact ----
 function selectCard(i) {
@@ -229,7 +266,7 @@ function combineCards(ai, bi) {
   selectedOp.value = null;
 
   if (newCards.length === 1) {
-    if (req(result, TARGET)) {
+    if (req(result, targetRat.value)) {
       handleWin();
     } else {
       // Wrong — show result but no win
@@ -243,10 +280,10 @@ function handleWin() {
   try { localStorage.setItem(SAVE_KEY, String(solvedCount.value)); } catch (_) {}
   if (props.daily) {
     overlay.title = '完成！';
-    overlay.sub = '成功湊到 24！';
+    overlay.sub = `成功湊到 ${target.value}！`;
   } else {
     overlay.title = '答對了！';
-    overlay.sub = '太厲害，成功湊到 24！';
+    overlay.sub = `太厲害，成功湊到 ${target.value}！`;
   }
   overlay.open = true;
   emit('solved', {});
@@ -273,8 +310,8 @@ function ratToDisplay(r) {
   if (r.d === 1) return String(r.n);
   return `${r.n}/${r.d}`;
 }
-function isExact24(card) {
-  return req(card.value, TARGET);
+function isExactTarget(card) {
+  return req(card.value, targetRat.value);
 }
 
 onMounted(() => {
@@ -298,7 +335,7 @@ onMounted(() => {
         <div class="hud">
           <div class="chip">
             <span class="chip__label">目標</span>
-            <span class="chip__value is-accent">24</span>
+            <span class="chip__value is-accent">{{ target }}</span>
           </div>
           <div class="chip">
             <span class="chip__label">剩餘</span>
@@ -320,8 +357,8 @@ onMounted(() => {
                 class="tf-card"
                 :class="{
                   'is-selected': selectedCard === i,
-                  'is-24': cards.length === 1 && isExact24(card),
-                  'is-wrong': cards.length === 1 && !isExact24(card),
+                  'is-24': cards.length === 1 && isExactTarget(card),
+                  'is-wrong': cards.length === 1 && !isExactTarget(card),
                 }"
                 :aria-pressed="selectedCard === i"
                 :aria-label="`數字 ${card.display}`"
@@ -356,8 +393,8 @@ onMounted(() => {
               <template v-if="gameWon">
                 <span class="tf-instr-win">已完成！</span>
               </template>
-              <template v-else-if="cards.length === 1 && !isExact24(cards[0])">
-                <span class="tf-instr-fail">結果是 {{ ratToDisplay(cards[0].value) }}，不是 24。請重設再試。</span>
+              <template v-else-if="cards.length === 1 && !isExactTarget(cards[0])">
+                <span class="tf-instr-fail">結果是 {{ ratToDisplay(cards[0].value) }}，不是 {{ target }}。請重設再試。</span>
               </template>
               <template v-else-if="selectedCard === null">
                 <span>先點選一張數字牌</span>
@@ -373,7 +410,7 @@ onMounted(() => {
             <!-- Solution reveal: always in DOM, hidden until requested — no layout shift -->
             <div class="tf-solution" :class="{ 'tf-solution--hidden': !showSolution }" aria-live="polite">
               <span class="panel__legend">參考答案</span>
-              <span class="tf-sol-expr">{{ prettySolution(solution) }} = 24</span>
+              <span class="tf-sol-expr">{{ prettySolution(solution) }} = {{ target }}</span>
             </div>
           </div>
 
@@ -399,6 +436,19 @@ onMounted(() => {
           </div>
         </div>
 
+        <div v-if="!props.daily" class="panel__group">
+          <span class="panel__legend">目標數字</span>
+          <div class="seg">
+            <button
+              v-for="m in TARGET_MODES"
+              :key="m.v"
+              :aria-pressed="targetMode === m.v"
+              :class="{ 'is-active': targetMode === m.v }"
+              @click="setTargetMode(m.v)"
+            >{{ m.label }}</button>
+          </div>
+        </div>
+
         <div class="panel__group">
           <span class="panel__legend">操作</span>
           <div style="display:flex;flex-direction:column;gap:0.5rem;">
@@ -414,7 +464,7 @@ onMounted(() => {
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            用 4 張數字牌做加、減、乘、除，讓最後結果等於 24。<br />
+            用 4 張數字牌做加、減、乘、除，讓最後結果等於上方的<b>目標數字</b>（24、36、48、60）。<br />
             1. 點選一張數字牌<br />
             2. 點選運算符號<br />
             3. 點選第二張數字牌，兩張合併為新牌<br />
