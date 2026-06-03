@@ -3,6 +3,21 @@
    Brick layout seeded by rng so daily is reproducible.
    emit('solved') on final level cleared. */
 
+// ---- pure game logic (unit-tested) ----
+import {
+  COLS,
+  BRICK_ROWS,
+  TOTAL_LEVELS,
+  LIVES_START,
+  buildBricks as _buildBricks,
+  reflectWalls,
+  reflectPaddle,
+  collideBrick,
+  allBricksCleared,
+  isBallLost,
+  brickHitScore,
+} from "~/games/breakout";
+
 const props = defineProps({
   seed: { type: [String, Number], default: null },
   daily: { type: Boolean, default: false },
@@ -11,11 +26,6 @@ const emit = defineEmits(['solved']);
 
 const accent = '#ff6f91';
 const BEST_KEY = 'playground.breakout.best';
-
-const COLS = 10;
-const BRICK_ROWS = 5;
-const TOTAL_LEVELS = 3;
-const LIVES_START = 3;
 
 // reactive HUD
 const canvasRef = ref(null);
@@ -45,21 +55,7 @@ let keys = { left: false, right: false };
 let mouseX = null;
 
 function buildBricks(lvlNum) {
-  const r = makeRng(String(props.seed ?? 'null') + '-' + lvlNum);
-  bricks = [];
-  const cols = COLS;
-  const rows = BRICK_ROWS;
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      // Higher levels: more 2-hp bricks
-      const twoHpChance = 0.1 + (lvlNum - 1) * 0.12 + row * 0.04;
-      const hp = r.bool(twoHpChance) ? 2 : 1;
-      bricks.push({
-        col, row, hp, maxHp: hp, alive: true,
-        x: 0, y: 0, w: 0, h: 0,
-      });
-    }
-  }
+  bricks = _buildBricks(props.seed, lvlNum);
 }
 
 function layoutObjects() {
@@ -166,12 +162,10 @@ function update(dt) {
   ball.y += ball.vy * spd;
 
   // walls
-  if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
-  if (ball.x + ball.r > W) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
-  if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+  { const r2 = reflectWalls(ball, W); ball.x = r2.x; ball.y = r2.y; ball.vx = r2.vx; ball.vy = r2.vy; }
 
   // lose
-  if (ball.y - ball.r > H) {
+  if (isBallLost(ball, H)) {
     lives.value--;
     if (lives.value <= 0) { gameOver(); return; }
     resetBall();
@@ -179,52 +173,15 @@ function update(dt) {
   }
 
   // paddle collision
-  if (
-    ball.vy > 0 &&
-    ball.x > paddle.x && ball.x < paddle.x + paddle.w &&
-    ball.y + ball.r > paddle.y && ball.y + ball.r < paddle.y + paddle.h + ball.r
-  ) {
-    ball.y = paddle.y - ball.r;
-    const relX = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2); // -1 to 1
-    const angle = relX * 1.1 - Math.PI / 2;
-    const spd2 = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-    ball.vx = Math.cos(angle) * spd2;
-    ball.vy = Math.sin(angle) * spd2;
-    // clamp vy to not go nearly horizontal
-    if (Math.abs(ball.vy) < 1.5) ball.vy = ball.vy < 0 ? -1.5 : 1.5;
-  }
+  { const p2 = reflectPaddle(ball, paddle); ball.x = p2.x; ball.y = p2.y; ball.vx = p2.vx; ball.vy = p2.vy; }
 
   // brick collisions
-  let hitAny = false;
-  for (const b of bricks) {
-    if (!b.alive) continue;
-    const bx = b.x, by = b.y, bw = b.w, bh = b.h;
-    const r = ball.r;
-
-    const overlapX = ball.x > bx - r && ball.x < bx + bw + r;
-    const overlapY = ball.y > by - r && ball.y < by + bh + r;
-    if (!overlapX || !overlapY) continue;
-
-    // determine hit axis
-    const fromLeft  = Math.abs(ball.x - (bx + bw));
-    const fromRight = Math.abs(ball.x - bx);
-    const fromTop   = Math.abs(ball.y - (by + bh));
-    const fromBot   = Math.abs(ball.y - by);
-    const minH = Math.min(fromLeft, fromRight);
-    const minV = Math.min(fromTop, fromBot);
-
-    if (minH < minV) ball.vx = -ball.vx;
-    else ball.vy = -ball.vy;
-
-    b.hp--;
-    if (b.hp <= 0) {
-      b.alive = false;
-      score.value += 10 * lvl.value;
-    } else {
-      score.value += 5 * lvl.value;
-    }
-    hitAny = true;
-    break; // one brick per frame to avoid tunneling issues
+  const brickResult = collideBrick(ball, bricks);
+  const hitAny = brickResult.hit;
+  if (hitAny) {
+    ball.vx = brickResult.vx;
+    ball.vy = brickResult.vy;
+    score.value += brickHitScore(bricks[brickResult.brickIndex], lvl.value);
   }
 
   if (hitAny && score.value > best.value) {
@@ -233,7 +190,7 @@ function update(dt) {
   }
 
   // check all bricks cleared
-  if (bricks.every(b => !b.alive)) {
+  if (allBricksCleared(bricks)) {
     if (lvl.value >= TOTAL_LEVELS) {
       // solved!
       if (score.value > best.value) {

@@ -3,6 +3,17 @@
    Player: top-left. Goal: bottom-right. Arrow/WASD + swipe + on-screen D-pad.
    Faint visited trail, accent-dot player, glowing goal. HUD: 步數, 時間. */
 
+// ---- pure game logic (framework-free, unit-tested in app/games/maze2d.ts) ----
+import {
+  generateMaze as _generateMaze,
+  canMove,
+  isAtExit,
+  DIR_N as N,
+  DIR_E as E,
+  DIR_S as S,
+  DIR_W as W,
+} from "~/games/maze2d";
+
 const accent = "#62b6ff";
 
 const props = defineProps({
@@ -36,51 +47,12 @@ let canvasSize = 0;
 let rafId = 0;
 let timerInterval = null;
 let startTime = 0;
-let rng = makeRng(props.seed);
-
-// ---- maze generation (recursive-backtracker DFS) ----
-const N = 1, E = 2, S = 4, W = 8;
-const OPPOSITE = { [N]: S, [S]: N, [E]: W, [W]: E };
-const DR = { [N]: -1, [S]: 1, [E]: 0, [W]: 0 };
-const DC = { [N]: 0, [S]: 0, [E]: 1, [W]: -1 };
-
-function generateMaze(size) {
-  const r = size, c = size;
-  // walls[row][col] = bitmask of OPEN directions (passage exists)
-  const walls = Array.from({ length: r }, () => new Uint8Array(c));
-  const cellVisited = Array.from({ length: r }, () => new Uint8Array(c));
-  const stack = [];
-  const startR = 0, startC = 0;
-  cellVisited[startR][startC] = 1;
-  stack.push([startR, startC]);
-
-  while (stack.length) {
-    const [cr, cc] = stack[stack.length - 1];
-    const dirs = rng.shuffle([N, E, S, W]);
-    let moved = false;
-    for (const d of dirs) {
-      const nr = cr + DR[d];
-      const nc = cc + DC[d];
-      if (nr < 0 || nc < 0 || nr >= r || nc >= c) continue;
-      if (cellVisited[nr][nc]) continue;
-      // carve passage
-      walls[cr][cc] |= d;
-      walls[nr][nc] |= OPPOSITE[d];
-      cellVisited[nr][nc] = 1;
-      stack.push([nr, nc]);
-      moved = true;
-      break;
-    }
-    if (!moved) stack.pop();
-  }
-  return walls;
-}
 
 function generate() {
   clearInterval(timerInterval);
-  rng = makeRng(props.seed);
+  const rng = makeRng(props.seed);
   rows = cols = mazeSize.value;
-  maze = generateMaze(rows);
+  maze = _generateMaze(rows, rng);
   px = 0; py = 0;
   visited = Array.from({ length: rows }, () => new Uint8Array(cols));
   visited[0][0] = 1;
@@ -101,15 +73,11 @@ watch(sizeIdx, () => { if (!props.daily) generate(); });
 // ---- movement ----
 function move(dr, dc) {
   if (won.value) return;
-  const dir = dr === -1 ? N : dr === 1 ? S : dc === 1 ? E : W;
-  if (!(maze[py][px] & dir)) return; // wall blocks
-  const nr = py + dr;
-  const nc = px + dc;
-  if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) return;
-  py = nr; px = nc;
+  if (!canMove(maze, rows, cols, py, px, dr, dc)) return;
+  py += dr; px += dc;
   steps.value++;
   visited[py][px] = 1;
-  if (py === rows - 1 && px === cols - 1) {
+  if (isAtExit(py, px, rows, cols)) {
     onWin();
   }
 }

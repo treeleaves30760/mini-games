@@ -3,50 +3,22 @@
    Tap-to-step and drag-to-draw, undo by backing up, per-level progress.
    Every level is hand-checked to have 0 or 2 odd-degree vertices. */
 
+// ---- pure game logic (framework-free, unit-tested) ----
+import {
+  LEVELS as ALL_LEVELS,
+  edgeKey,
+  buildEdgeSet,
+  computeOddNodes,
+  enterNode,
+  isWon,
+  isStartNode,
+} from "~/games/one-line";
+
 const accent = "#ffb057";
 const SAVE_KEY = "playground.oneline.solved";
 
-const LEVELS = [
-  { name: "三角形", nodes: [[50, 15], [85, 80], [15, 80]], edges: [[0, 1], [1, 2], [2, 0]] },
-  {
-    name: "五角星",
-    nodes: [[50, 14], [86.1, 40.3], [72.3, 82.7], [27.7, 82.7], [13.9, 40.3]],
-    edges: [[0, 2], [2, 4], [4, 1], [1, 3], [3, 0]],
-  },
-  {
-    name: "對角方塊",
-    nodes: [[22, 22], [78, 22], [78, 78], [22, 78]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]],
-  },
-  {
-    name: "蝴蝶結",
-    nodes: [[15, 25], [15, 75], [50, 50], [85, 25], [85, 75]],
-    edges: [[0, 2], [1, 2], [0, 1], [3, 2], [4, 2], [3, 4]],
-  },
-  {
-    name: "房子",
-    nodes: [[20, 82], [80, 82], [80, 45], [20, 45], [50, 16]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [2, 4]],
-  },
-  {
-    name: "六邊形＋對角",
-    nodes: [[50, 14], [81.2, 32], [81.2, 68], [50, 86], [18.8, 68], [18.8, 32]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [0, 3]],
-  },
-  {
-    name: "雙斜屋",
-    nodes: [[20, 82], [80, 82], [80, 45], [20, 45], [50, 16]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [2, 4], [3, 1]],
-  },
-  {
-    name: "信封",
-    nodes: [[20, 40], [80, 40], [80, 82], [20, 82], [50, 15]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 4], [1, 4], [3, 1]],
-  },
-];
-const total = LEVELS.length;
-
-const key = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
+// LEVELS alias avoids collision with the imported ALL_LEVELS name; total is unchanged.
+const total = ALL_LEVELS.length;
 
 // ---- state ----
 const svgRef = ref(null);
@@ -60,19 +32,12 @@ const overlay = reactive({ open: false, title: "過關！", sub: "", lastLevel: 
 let dragging = false;
 
 // ---- derived ----
-const level = computed(() => LEVELS[li.value]);
+const level = computed(() => ALL_LEVELS[li.value]);
 const nodes = computed(() => level.value.nodes);
 const edges = computed(() => level.value.edges);
-const edgeSet = computed(() => new Set(edges.value.map(([a, b]) => key(a, b))));
+const edgeSet = computed(() => buildEdgeSet(edges.value));
 const head = computed(() => (path.value.length ? path.value[path.value.length - 1] : -1));
-const oddNodes = computed(() => {
-  const deg = new Array(nodes.value.length).fill(0);
-  edges.value.forEach(([a, b]) => {
-    deg[a]++;
-    deg[b]++;
-  });
-  return deg.map((d, i) => (d % 2 ? i : -1)).filter((i) => i >= 0);
-});
+const oddNodes = computed(() => computeOddNodes(nodes.value.length, edges.value));
 const ruleHint = computed(() =>
   oddNodes.value.length === 2
     ? "這個圖形有 2 個奇點（亮起的點），請從其中一個出發。"
@@ -82,36 +47,18 @@ const cleared = computed(() => solvedSet.value.size);
 
 // ---- traversal ----
 function enter(n) {
-  if (path.value.length === 0) {
-    if (oddNodes.value.length === 2 && !oddNodes.value.includes(n)) return false;
-    path.value.push(n);
-    return true;
-  }
-  const h = head.value;
-  if (n === h) return false;
-  if (path.value.length >= 2 && n === path.value[path.value.length - 2]) {
-    const removed = path.value.pop();
-    used.value.delete(key(removed, head.value));
-    return true;
-  }
-  const ek = key(h, n);
-  if (edgeSet.value.has(ek) && !used.value.has(ek)) {
-    used.value.add(ek);
-    path.value.push(n);
-    return true;
-  }
-  return false;
+  return enterNode(n, path.value, used.value, edgeSet.value, oddNodes.value);
 }
 
 function isVisited(i) {
   return path.value.includes(i);
 }
 function isStart(i) {
-  return path.value.length === 0 && oddNodes.value.length === 2 && oddNodes.value.includes(i);
+  return isStartNode(i, path.value, oddNodes.value);
 }
 
 function checkWin() {
-  if (solved.value || used.value.size !== edges.value.length) return;
+  if (solved.value || !isWon(used.value, edges.value)) return;
   solved.value = true;
   dragging = false;
   hideRubber();
@@ -213,7 +160,7 @@ function resetLevel() {
 function undo() {
   if (path.value.length === 0) return;
   const removed = path.value.pop();
-  if (path.value.length) used.value.delete(key(removed, head.value));
+  if (path.value.length) used.value.delete(edgeKey(removed, head.value));
   solved.value = false;
   overlay.open = false;
 }
@@ -273,7 +220,7 @@ onMounted(() => {
               v-for="(e, idx) in edges"
               :key="'e' + idx"
               class="edge"
-              :class="{ 'is-drawn': used.has(key(e[0], e[1])) }"
+              :class="{ 'is-drawn': used.has(edgeKey(e[0], e[1])) }"
               :x1="nodes[e[0]][0]"
               :y1="nodes[e[0]][1]"
               :x2="nodes[e[1]][0]"

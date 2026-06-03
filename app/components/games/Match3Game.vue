@@ -3,6 +3,15 @@
    seeded board via rng, no initial matches, move-limited mode.
    emit('solved') on reaching target score within move limit. */
 
+import {
+  findMatches as _findMatches,
+  swapCreatesMatch as _swapCreatesMatch,
+  generateBoard as _generateBoard,
+  clearAndRefill as _clearAndRefill,
+  SIZE,
+  GEM_TYPES,
+} from "~/games/match3";
+
 const props = defineProps({
   seed: { type: [String, Number], default: null },
   daily: { type: Boolean, default: false },
@@ -12,8 +21,6 @@ const emit = defineEmits(['solved']);
 const accent = '#f072a9';
 const BEST_KEY = 'playground.match3.best';
 
-const SIZE = 8;
-const GEM_TYPES = 6;
 const TARGET_SCORE = 1500;
 const MOVE_LIMIT = 20;
 
@@ -45,70 +52,8 @@ const clearing = ref(new Set()); // keys of cells being cleared
 function cellKey(r, c) { return `${r},${c}`; }
 
 // ---- board generation ----
-function randomGem(r2) { return r2.int(0, GEM_TYPES - 1); }
-
-function hasMatch(grid) {
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE - 2; c++) {
-      if (grid[r][c] === grid[r][c + 1] && grid[r][c] === grid[r][c + 2]) return true;
-    }
-  }
-  for (let c = 0; c < SIZE; c++) {
-    for (let r = 0; r < SIZE - 2; r++) {
-      if (grid[r][c] === grid[r + 1][c] && grid[r][c] === grid[r + 2][c]) return true;
-    }
-  }
-  return false;
-}
-
-function hasValidMove(grid) {
-  // check if any swap creates a match
-  const dirs = [[0,1],[1,0]];
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      for (const [dr, dc] of dirs) {
-        const nr = r + dr, nc = c + dc;
-        if (nr >= SIZE || nc >= SIZE) continue;
-        // swap
-        const tmp = grid[r][c];
-        grid[r][c] = grid[nr][nc];
-        grid[nr][nc] = tmp;
-        const ok = hasMatch(grid);
-        // swap back
-        grid[nr][nc] = grid[r][c];
-        grid[r][c] = tmp;
-        if (ok) return true;
-      }
-    }
-  }
-  return false;
-}
-
 function generateBoard() {
-  const r2 = makeRng(String(props.seed ?? 'null') + '-board');
-  let grid;
-  let attempts = 0;
-  do {
-    grid = [];
-    for (let r = 0; r < SIZE; r++) {
-      const row = [];
-      for (let c = 0; c < SIZE; c++) {
-        let gem;
-        let tries = 0;
-        do {
-          gem = randomGem(r2);
-          tries++;
-        } while (tries < 20 && (
-          (c >= 2 && row[c-1] === gem && row[c-2] === gem) ||
-          (r >= 2 && grid[r-1][c] === gem && grid[r-2][c] === gem)
-        ));
-        row.push(gem);
-      }
-      grid.push(row);
-    }
-    attempts++;
-  } while ((hasMatch(grid) || !hasValidMove(grid)) && attempts < 50);
-  return grid;
+  return _generateBoard(props.seed);
 }
 
 function initGame() {
@@ -143,45 +88,9 @@ function showOverlay(mode, title, sub, action) {
   overlay.mode = mode; overlay.title = title; overlay.sub = sub; overlay.action = action; overlay.open = true;
 }
 
-// ---- match logic ----
-function findMatches(grid) {
-  const matched = new Set();
-  // horizontal
-  for (let r = 0; r < SIZE; r++) {
-    let run = 1;
-    for (let c = 1; c < SIZE; c++) {
-      if (grid[r][c] === grid[r][c-1] && grid[r][c] !== null) { run++; }
-      else {
-        if (run >= 3) for (let k = c - run; k < c; k++) matched.add(cellKey(r, k));
-        run = 1;
-      }
-    }
-    if (run >= 3) for (let k = SIZE - run; k < SIZE; k++) matched.add(cellKey(r, k));
-  }
-  // vertical
-  for (let c = 0; c < SIZE; c++) {
-    let run = 1;
-    for (let r = 1; r < SIZE; r++) {
-      if (grid[r][c] === grid[r-1][c] && grid[r][c] !== null) { run++; }
-      else {
-        if (run >= 3) for (let k = r - run; k < r; k++) matched.add(cellKey(k, c));
-        run = 1;
-      }
-    }
-    if (run >= 3) for (let k = SIZE - run; k < SIZE; k++) matched.add(cellKey(k, c));
-  }
-  return matched;
-}
-
-function swapCreatesMatch(grid, r1, c1, r2, c2) {
-  const tmp = grid[r1][c1];
-  grid[r1][c1] = grid[r2][c2];
-  grid[r2][c2] = tmp;
-  const ok = findMatches(grid).size > 0;
-  grid[r2][c2] = grid[r1][c1];
-  grid[r1][c1] = tmp;
-  return ok;
-}
+// ---- match logic (delegates to ~/games/match3) ----
+function findMatches(grid) { return _findMatches(grid); }
+function swapCreatesMatch(grid, r1, c1, r2, c2) { return _swapCreatesMatch(grid, r1, c1, r2, c2); }
 
 async function delay(ms) {
   if (reducedMotion) return;
@@ -211,25 +120,14 @@ async function processCascade() {
     clearing.value = new Set();
     await delay(110);
 
-    // 3. gravity + refill — commit again so gems visibly drop into place
-    const next = board.value.map(row => [...row]);
+    // 3. gravity + refill via pure module (track which cells moved for animation)
+    const beforeGravity = board.value.map(row => [...row]);
+    const next = _clearAndRefill(beforeGravity, new Set(), rng); // matched already cleared above
+    // compute the falling set: any cell whose position differs from beforeGravity
     const newFalling = new Set();
     for (let c = 0; c < SIZE; c++) {
-      let write = SIZE - 1;
-      for (let r = SIZE - 1; r >= 0; r--) {
-        if (next[r][c] !== null) {
-          if (r !== write) {
-            next[write][c] = next[r][c];
-            next[r][c] = null;
-            newFalling.add(cellKey(write, c));
-          }
-          write--;
-        }
-      }
-      // fill the top with new gems
-      for (let r = write; r >= 0; r--) {
-        next[r][c] = rng.int(0, GEM_TYPES - 1);
-        newFalling.add(cellKey(r, c));
+      for (let r = 0; r < SIZE; r++) {
+        if (next[r][c] !== beforeGravity[r][c]) newFalling.add(cellKey(r, c));
       }
     }
     board.value = next;

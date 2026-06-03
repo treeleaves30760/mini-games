@@ -1,6 +1,15 @@
 <script setup>
 /* 俄羅斯方塊 Tetris — canvas, DPR-crisp, keyboard + on-screen buttons.
-   7-bag randomizer seeded by rng. Ghost piece, next preview, wall-kicks. */
+   7-bag randomizer seeded by rng. Ghost piece, next preview, wall-kicks.
+   Pure game logic lives in ~/games/tetris.ts. */
+
+import {
+  COLS, ROWS, PIECES, COLORS,
+  emptyBoard, spawnPiece, getCells, collides,
+  tryRotate as computeRotation,
+  lockPiece, clearLines as computeClearLines,
+  buildBag, nextFromBag,
+} from "~/games/tetris";
 
 const props = defineProps({
   seed: { type: [String, Number], default: null },
@@ -11,60 +20,7 @@ const emit = defineEmits(['solved']);
 const accent = "#4ea8de";
 const BEST_KEY = "playground.tetris.best";
 
-const COLS = 10;
-const ROWS = 20;
 const PREVIEW_SIZE = 4;
-
-// Tetromino definitions [rotations][cells] each cell is [col, row] offset from pivot
-const PIECES = {
-  I: [
-    [[0,1],[1,1],[2,1],[3,1]],
-    [[2,0],[2,1],[2,2],[2,3]],
-    [[0,2],[1,2],[2,2],[3,2]],
-    [[1,0],[1,1],[1,2],[1,3]],
-  ],
-  O: [
-    [[1,0],[2,0],[1,1],[2,1]],
-    [[1,0],[2,0],[1,1],[2,1]],
-    [[1,0],[2,0],[1,1],[2,1]],
-    [[1,0],[2,0],[1,1],[2,1]],
-  ],
-  T: [
-    [[1,0],[0,1],[1,1],[2,1]],
-    [[1,0],[1,1],[2,1],[1,2]],
-    [[0,1],[1,1],[2,1],[1,2]],
-    [[1,0],[0,1],[1,1],[1,2]],
-  ],
-  S: [
-    [[1,0],[2,0],[0,1],[1,1]],
-    [[1,0],[1,1],[2,1],[2,2]],
-    [[1,1],[2,1],[0,2],[1,2]],
-    [[0,0],[0,1],[1,1],[1,2]],
-  ],
-  Z: [
-    [[0,0],[1,0],[1,1],[2,1]],
-    [[2,0],[1,1],[2,1],[1,2]],
-    [[0,1],[1,1],[1,2],[2,2]],
-    [[1,0],[0,1],[1,1],[0,2]],
-  ],
-  J: [
-    [[0,0],[0,1],[1,1],[2,1]],
-    [[1,0],[2,0],[1,1],[1,2]],
-    [[0,1],[1,1],[2,1],[2,2]],
-    [[1,0],[1,1],[0,2],[1,2]],
-  ],
-  L: [
-    [[2,0],[0,1],[1,1],[2,1]],
-    [[1,0],[1,1],[1,2],[2,2]],
-    [[0,1],[1,1],[2,1],[0,2]],
-    [[0,0],[1,0],[1,1],[1,2]],
-  ],
-};
-const PIECE_KEYS = ['I','O','T','S','Z','J','L'];
-const COLORS = {
-  I: '#4ea8de', O: '#f0c040', T: '#b04af0', S: '#40c05a',
-  Z: '#f05050', J: '#3060d0', L: '#f08030',
-};
 
 // ---- reactive HUD ----
 const canvasRef = ref(null);
@@ -91,99 +47,55 @@ let dropAcc = 0, dropInterval = 800, lastT = 0;
 let lockDelay = 0, lockPending = false;
 let softDropping = false;
 
-function buildBag() {
-  const b = [...PIECE_KEYS];
-  rng.shuffle(b);
-  return b;
-}
-function nextFromBag() {
-  if (bag.length === 0) bag = buildBag();
-  return bag.shift();
-}
-
-function emptyBoard() {
-  return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-}
-
-function spawnPiece(type) {
-  return { type, rot: 0, x: 0, y: 0 };
-}
-
-function getCells(piece) {
-  return PIECES[piece.type][piece.rot].map(([dc, dr]) => ({
-    x: piece.x + dc,
-    y: piece.y + dr,
-  }));
-}
-
-function collides(piece, dx = 0, dy = 0, rot = piece.rot) {
-  const cells = PIECES[piece.type][rot];
-  for (const [dc, dr] of cells) {
-    const nx = piece.x + dc + dx;
-    const ny = piece.y + dr + dy;
-    if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
-    if (ny >= 0 && board[ny][nx]) return true;
-  }
-  return false;
-}
+// buildBag, nextFromBag, emptyBoard, spawnPiece, getCells, collides
+// are imported from ~/games/tetris (bound to the reactive `rng`/`board`).
 
 function tryRotate(cw) {
-  const p = current;
-  const rots = PIECES[p.type].length;
-  const newRot = (p.rot + (cw ? 1 : rots - 1)) % rots;
-  // simple wall-kick: try 0, -1, +1, -2, +2 x offsets
-  for (const dx of [0, -1, 1, -2, 2]) {
-    if (!collides(p, dx, 0, newRot)) {
-      current = { ...p, rot: newRot, x: p.x + dx };
-      lockPending = false;
-      return;
-    }
+  const result = computeRotation(board, current, cw);
+  if (result !== current) {
+    current = result;
+    lockPending = false;
   }
 }
 
 function hardDrop() {
   let dy = 0;
-  while (!collides(current, 0, dy + 1)) dy++;
+  while (!collides(board, current, 0, dy + 1)) dy++;
   current = { ...current, y: current.y + dy };
   score.value += dy * 2;
   lock();
 }
 
 function lock() {
-  const cells = getCells(current);
-  for (const { x, y } of cells) {
+  // Check for game-over: any cell above the visible area
+  for (const { y } of getCells(current)) {
     if (y < 0) { gameOver(); return; }
-    board[y][x] = COLORS[current.type];
   }
-  clearLines();
-  const t = nextFromBag();
-  nextPiece = spawnPiece(nextFromBag());
+  lockPiece(board, current);
+  applyLineClears();
+  const t = nextFromBag(bag, rng);
+  nextPiece = spawnPiece(nextFromBag(bag, rng));
   current = spawnPiece(t);
   // spawn at visible top
   current.y = 0;
-  if (collides(current)) { gameOver(); return; }
+  if (collides(board, current)) { gameOver(); return; }
   lockPending = false;
   lockDelay = 0;
   drawPreview();
 }
 
-function clearLines() {
-  const full = [];
-  for (let r = ROWS - 1; r >= 0; r--) {
-    if (board[r].every(c => c !== null)) full.push(r);
-  }
-  if (!full.length) return;
-  const pts = [0, 100, 300, 500, 800];
-  const earned = (pts[Math.min(full.length, 4)] || 800) * level.value;
+function applyLineClears() {
+  const result = computeClearLines(board);
+  if (result.linesCleared === 0) return;
+  board = result.board;
+  const earned = result.basePoints * level.value;
   score.value += earned;
-  lines.value += full.length;
+  lines.value += result.linesCleared;
   const newLvl = Math.floor(lines.value / 10) + 1;
   if (newLvl > level.value) {
     level.value = newLvl;
     dropInterval = Math.max(80, 800 - (level.value - 1) * 70);
   }
-  for (const r of full) board.splice(r, 1);
-  while (board.length < ROWS) board.unshift(Array(COLS).fill(null));
   if (score.value > best.value) {
     best.value = score.value;
     localStorage.setItem(BEST_KEY, String(best.value));
@@ -192,7 +104,7 @@ function clearLines() {
 
 function ghostY() {
   let dy = 0;
-  while (!collides(current, 0, dy + 1)) dy++;
+  while (!collides(board, current, 0, dy + 1)) dy++;
   return current.y + dy;
 }
 
@@ -207,15 +119,14 @@ function gameOver() {
 }
 
 function reset() {
-  board = emptyBoard();
-  bag = buildBag();
   rng = makeRng(props.seed);
-  bag = buildBag();
+  board = emptyBoard();
+  bag = buildBag(rng);
   score.value = 0; lines.value = 0; level.value = 1;
   dropInterval = 800; dropAcc = 0; lockDelay = 0; lockPending = false;
   over = false; paused.value = false;
-  const t = nextFromBag();
-  nextPiece = spawnPiece(nextFromBag());
+  const t = nextFromBag(bag, rng);
+  nextPiece = spawnPiece(nextFromBag(bag, rng));
   current = spawnPiece(t);
   current.y = 0;
 }
@@ -340,7 +251,7 @@ function loop(ts) {
     dropAcc += dt;
     if (dropAcc >= speed) {
       dropAcc -= speed;
-      if (!collides(current, 0, 1)) {
+      if (!collides(board, current, 0, 1)) {
         current = { ...current, y: current.y + 1 };
         if (softDropping) score.value += 1;
         lockPending = false;
@@ -390,7 +301,7 @@ const DAS_DELAY = 170, ARR_INTERVAL = 50;
 
 function moveH(dx) {
   if (!started || over || paused.value || !current) return;
-  if (!collides(current, dx, 0)) {
+  if (!collides(board, current, dx, 0)) {
     current = { ...current, x: current.x + dx };
     if (lockPending) { lockDelay = 0; }
   }

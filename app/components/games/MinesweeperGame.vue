@@ -2,6 +2,13 @@
 /* 踩地雷 Minesweeper — seeded board, safe-center first-click, flood-reveal.
    Left-click reveal, right-click flag, 🚩 toggle button for touch. */
 
+import {
+  buildBoard as msBuildBoard,
+  floodReveal as msFloodReveal,
+  neighbors as msNeighbors,
+  isWin as msIsWin,
+} from "~/games/minesweeper";
+
 const accent = "#ff6b6b";
 const BEST_KEY = "playground.minesweeper.best";
 
@@ -51,69 +58,18 @@ function rc(i) {
   return [Math.floor(i / cols.value), i % cols.value];
 }
 function neighbors(r, c) {
-  const ns = [];
-  for (let dr = -1; dr <= 1; dr++)
-    for (let dc = -1; dc <= 1; dc++) {
-      if (dr === 0 && dc === 0) continue;
-      const nr = r + dr, nc = c + dc;
-      if (nr >= 0 && nr < rows.value && nc >= 0 && nc < cols.value)
-        ns.push(idx(nr, nc));
-    }
-  return ns;
+  return msNeighbors(rows.value, cols.value, r, c);
 }
 
 function buildBoard(safeR, safeC) {
-  const R = rows.value, C = cols.value, M = mineCount.value;
-  const total = R * C;
-  const board = Array.from({ length: total }, () => ({
-    mine: false, revealed: false, flagged: false, count: 0,
-  }));
-
-  // Safe zone: center cell + 3×3 neighbors
-  const safeSet = new Set();
-  for (let dr = -1; dr <= 1; dr++)
-    for (let dc = -1; dc <= 1; dc++) {
-      const nr = safeR + dr, nc = safeC + dc;
-      if (nr >= 0 && nr < R && nc >= 0 && nc < C)
-        safeSet.add(idx(nr, nc));
-    }
-
-  // Place mines deterministically using seeded rng
-  const rng = makeRng(props.seed);
-  const candidates = [];
-  for (let i = 0; i < total; i++) if (!safeSet.has(i)) candidates.push(i);
-  rng.shuffle(candidates);
-  const minePositions = candidates.slice(0, M);
-  minePositions.forEach((i) => { board[i].mine = true; });
-
-  // Compute counts
-  for (let r = 0; r < R; r++)
-    for (let c = 0; c < C; c++) {
-      if (board[idx(r, c)].mine) continue;
-      board[idx(r, c)].count = neighbors(r, c).filter((i) => board[i].mine).length;
-    }
-
-  cells.value = board;
+  const board = msBuildBoard(rows.value, cols.value, mineCount.value, safeR, safeC, props.seed);
+  cells.value = board.cells;
 }
 
 function floodReveal(r, c) {
-  const stack = [idx(r, c)];
-  const visited = new Set(stack);
-  while (stack.length) {
-    const i = stack.pop();
-    const cell = cells.value[i];
-    if (cell.revealed || cell.flagged) continue;
-    cell.revealed = true;
-    if (cell.count === 0 && !cell.mine) {
-      const [cr, cc] = rc(i);
-      for (const ni of neighbors(cr, cc)) {
-        if (!visited.has(ni) && !cells.value[ni].flagged) {
-          visited.add(ni);
-          stack.push(ni);
-        }
-      }
-    }
-  }
+  // The module mutates board.cells in place; cells.value IS the same array,
+  // so reactive updates propagate automatically.
+  msFloodReveal({ cells: cells.value, rows: rows.value, cols: cols.value }, r, c);
 }
 
 function startTimer() {
@@ -128,8 +84,7 @@ function stopTimer() {
 }
 
 function checkWin() {
-  const allSafe = cells.value.every((c) => c.mine || c.revealed);
-  if (!allSafe) return;
+  if (!msIsWin({ cells: cells.value, rows: rows.value, cols: cols.value })) return;
   stopTimer();
   gameState.value = "won";
   // Auto-flag remaining mines

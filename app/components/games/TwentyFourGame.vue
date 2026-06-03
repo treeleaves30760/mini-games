@@ -1,7 +1,14 @@
 <script setup>
 /* 24點 Make 24 — tap number, tap operator, tap number to combine cards.
-   Brute-force solver verifies solvability; re-rolls seeded stream until solvable.
-   Exact rational arithmetic (numerator/denominator) avoids floating-point errors. */
+   Pure game logic lives in ~/games/twenty-four; this component handles
+   Vue state, animation, localStorage, and user interaction only. */
+
+import {
+  rat, req, applyOp,
+  TARGET_MODES,
+  prettySolution,
+  genPuzzle,
+} from '~/games/twenty-four';
 
 const accent = "#ff9aa2";
 const SAVE_KEY = "playground.twentyfour.solved";
@@ -12,161 +19,10 @@ const props = defineProps({
 });
 const emit = defineEmits(['solved']);
 
-// ---- Rational arithmetic ----
-function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
-function rat(n, d = 1) {
-  if (d === 0) return null; // division by zero
-  if (n === 0) return { n: 0, d: 1 };
-  const g = gcd(Math.abs(n), Math.abs(d));
-  const sign = d < 0 ? -1 : 1;
-  return { n: sign * n / g, d: sign * d / g };
-}
-function radd(a, b) { return rat(a.n * b.d + b.n * a.d, a.d * b.d); }
-function rsub(a, b) { return rat(a.n * b.d - b.n * a.d, a.d * b.d); }
-function rmul(a, b) { return rat(a.n * b.n, a.d * b.d); }
-function rdiv(a, b) { if (b.n === 0) return null; return rat(a.n * b.d, a.d * b.n); }
-function req(a, b) { return a !== null && b !== null && a.n === b.n && a.d === b.d; }
-
-/* Targets are factor-rich numbers so four 1–9 cards can still reach them many ways.
-   24 is the classic; 36 / 48 / 60 add variety and a touch more challenge. */
 const TARGET_POOL = [24, 36, 48, 60];
-const TARGET_MODES = [
-  { v: 'mix', label: '隨機' },
-  { v: '24', label: '24' },
-  { v: '36', label: '36' },
-  { v: '48', label: '48' },
-  { v: '60', label: '60' },
-];
 const targetMode = ref('mix');          // 'mix' | '24' | '36' | '48' | '60'
 const target = ref(24);                 // the current puzzle's goal number
 const targetRat = computed(() => rat(target.value));
-
-function applyOp(op, a, b) {
-  if (op === '+') return radd(a, b);
-  if (op === '-') return rsub(a, b);
-  if (op === '*') return rmul(a, b);
-  if (op === '/') return rdiv(a, b);
-  return null;
-}
-
-// 5 binary tree shapes for 4 numbers: ((a op b) op c) op d etc.
-// We iterate all permutations × all operator combos × all structures.
-function* permutations(arr) {
-  if (arr.length <= 1) { yield [...arr]; return; }
-  for (let i = 0; i < arr.length; i++) {
-    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
-    for (const p of permutations(rest)) yield [arr[i], ...p];
-  }
-}
-
-const OPS = ['+','-','*','/'];
-
-function solveFor(nums, tr) {
-  const rats = nums.map(n => rat(n));
-  for (const perm of permutations([0,1,2,3])) {
-    const [a,b,c,d] = perm.map(i => rats[i]);
-    const [na,nb,nc,nd] = perm.map(i => nums[i]);
-    for (const o1 of OPS) for (const o2 of OPS) for (const o3 of OPS) {
-      // Shape 1: ((a o1 b) o2 c) o3 d
-      {
-        const ab = applyOp(o1,a,b);
-        if (ab) {
-          const abc = applyOp(o2,ab,c);
-          if (abc) {
-            const abcd = applyOp(o3,abc,d);
-            if (abcd && req(abcd, tr))
-              return `((${na}${o1}${nb})${o2}${nc})${o3}${nd}`;
-          }
-        }
-      }
-      // Shape 2: (a o1 (b o2 c)) o3 d
-      {
-        const bc = applyOp(o2,b,c);
-        if (bc) {
-          const abc = applyOp(o1,a,bc);
-          if (abc) {
-            const abcd = applyOp(o3,abc,d);
-            if (abcd && req(abcd, tr))
-              return `(${na}${o1}(${nb}${o2}${nc}))${o3}${nd}`;
-          }
-        }
-      }
-      // Shape 3: (a o1 b) o2 (c o3 d)
-      {
-        const ab = applyOp(o1,a,b);
-        const cd = applyOp(o3,c,d);
-        if (ab && cd) {
-          const abcd = applyOp(o2,ab,cd);
-          if (abcd && req(abcd, tr))
-            return `(${na}${o1}${nb})${o2}(${nc}${o3}${nd})`;
-        }
-      }
-      // Shape 4: a o1 ((b o2 c) o3 d)
-      {
-        const bc = applyOp(o2,b,c);
-        if (bc) {
-          const bcd = applyOp(o3,bc,d);
-          if (bcd) {
-            const abcd = applyOp(o1,a,bcd);
-            if (abcd && req(abcd, tr))
-              return `${na}${o1}((${nb}${o2}${nc})${o3}${nd})`;
-          }
-        }
-      }
-      // Shape 5: a o1 (b o2 (c o3 d))
-      {
-        const cd = applyOp(o3,c,d);
-        if (cd) {
-          const bcd = applyOp(o2,b,cd);
-          if (bcd) {
-            const abcd = applyOp(o1,a,bcd);
-            if (abcd && req(abcd, tr))
-              return `${na}${o1}(${nb}${o2}(${nc}${o3}${nd}))`;
-          }
-        }
-      }
-    }
-  }
-  return null;
-}
-
-// ---- pretty-print solution ----
-function prettySolution(expr) {
-  if (!expr) return '';
-  return expr
-    .replace(/\*/g, ' × ')
-    .replace(/\//g, ' ÷ ')
-    .replace(/\+/g, ' + ')
-    .replace(/-/g, ' − ')
-    .replace(/\s+/g, ' ');
-}
-
-// ---- generate puzzle ----
-function chooseTarget(rng) {
-  if (targetMode.value === 'mix') return rng.pick(TARGET_POOL);
-  const n = Number(targetMode.value);
-  return TARGET_POOL.includes(n) ? n : 24;
-}
-
-// Known-solvable fallbacks per target (used only if 600 random draws all fail).
-const FALLBACKS = {
-  24: { nums: [3, 3, 8, 8], solution: '8/(3-8/3)' },
-  36: { nums: [9, 9, 9, 9], solution: '((9+9)+9)+9' },
-  48: { nums: [6, 8, 1, 1], solution: '((6*8)*1)*1' },
-  60: { nums: [5, 6, 2, 1], solution: '((5*6)*2)*1' },
-};
-
-function genPuzzle(rng) {
-  const goal = chooseTarget(rng);
-  const tr = rat(goal);
-  for (let i = 0; i < 600; i++) {
-    const nums = [rng.int(1,9), rng.int(1,9), rng.int(1,9), rng.int(1,9)];
-    const sol = solveFor(nums, tr);
-    if (sol) return { nums, solution: sol, target: goal };
-  }
-  const fb = FALLBACKS[goal] || FALLBACKS[24];
-  return { nums: fb.nums, solution: fb.solution, target: FALLBACKS[goal] ? goal : 24 };
-}
 
 // ---- game state ----
 const nums = ref([]);
@@ -195,7 +51,7 @@ function initCards(ns) {
 
 function regenerate() {
   const rng = makeRng(props.seed);
-  const puzzle = genPuzzle(rng);
+  const puzzle = genPuzzle(rng, targetMode.value);
   nums.value = puzzle.nums;
   solution.value = puzzle.solution;
   target.value = puzzle.target;

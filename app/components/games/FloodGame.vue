@@ -1,7 +1,19 @@
 <script setup>
 /* 色彩擴散 Flood It — 14×14 grid, 6 colours, flood-fill from top-left.
    Pick a colour each turn; the connected region absorbs adjacent same-colour
-   cells. Goal: fill the entire board within the move limit. */
+   cells. Goal: fill the entire board within the move limit.
+
+   Pure game logic lives in ~/games/flood.ts. */
+
+import {
+  PALETTE,
+  SIZES,
+  LIMITS,
+  generateBoard,
+  getRegion as computeRegion,
+  applyPick,
+  isWon,
+} from "~/games/flood";
 
 const accent = "#ff9f43";
 
@@ -11,13 +23,10 @@ const props = defineProps({
 });
 const emit = defineEmits(["solved"]);
 
-// ---- palette (accessible, dark-theme-friendly) ----
-const PALETTE = ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#c77dff", "#ff9f43"];
+// ---- palette names (display-only, not part of pure logic) ----
 const PALETTE_NAMES = ["紅", "黃", "綠", "藍", "紫", "橙"];
 
-const SIZES = [10, 14, 18];
 const SIZE_LABELS = ["10", "14", "18"];
-const LIMITS = { 10: 20, 14: 25, 18: 32 };
 
 const SAVE_KEY = "playground.flood.best";
 
@@ -38,12 +47,7 @@ let rng = makeRng(props.seed);
 // ---- board generation ----
 function generate() {
   rng = makeRng(props.seed);
-  const size = gridSize.value;
-  const flat = [];
-  for (let i = 0; i < size * size; i++) {
-    flat.push(rng.int(0, PALETTE.length - 1));
-  }
-  board.value = flat;
+  board.value = generateBoard(gridSize.value, rng);
   moves.value = 0;
   won.value = false;
   lost.value = false;
@@ -53,73 +57,19 @@ function generate() {
 watch(() => props.seed, generate);
 watch(sizeIdx, () => { if (!props.daily) generate(); });
 
-// ---- flood region (BFS from [0,0]) ----
-function getRegion() {
-  const size = gridSize.value;
-  const b = board.value;
-  const startColor = b[0];
-  const visited = new Uint8Array(size * size);
-  const queue = [0];
-  visited[0] = 1;
-  while (queue.length) {
-    const idx = queue.shift();
-    const r = (idx / size) | 0;
-    const c = idx % size;
-    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-      const nr = r + dr;
-      const nc = c + dc;
-      if (nr < 0 || nc < 0 || nr >= size || nc >= size) continue;
-      const ni = nr * size + nc;
-      if (!visited[ni] && b[ni] === startColor) {
-        visited[ni] = 1;
-        queue.push(ni);
-      }
-    }
-  }
-  return visited;
-}
-
 // ---- flood fill action ----
 function pickColor(colorIdx) {
   if (won.value || lost.value) return;
-  const b = board.value.slice();
-  const currentColor = b[0];
+  const currentColor = board.value[0];
   if (colorIdx === currentColor) return;
 
   moves.value++;
-  const size = gridSize.value;
-  // BFS expand: flood region becomes colorIdx, then absorb neighbours
-  const visited = new Uint8Array(size * size);
-  const queue = [0];
-  visited[0] = 1;
-  b[0] = colorIdx;
-
-  while (queue.length) {
-    const idx = queue.shift();
-    const r = (idx / size) | 0;
-    const c = idx % size;
-    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-      const nr = r + dr;
-      const nc = c + dc;
-      if (nr < 0 || nc < 0 || nr >= size || nc >= size) continue;
-      const ni = nr * size + nc;
-      if (!visited[ni] && (b[ni] === currentColor || b[ni] === colorIdx)) {
-        visited[ni] = 1;
-        b[ni] = colorIdx;
-        queue.push(ni);
-      }
-    }
-  }
-
-  board.value = b;
+  board.value = applyPick(board.value, gridSize.value, colorIdx);
   checkResult();
 }
 
 function checkResult() {
-  const b = board.value;
-  const first = b[0];
-  const allSame = b.every(c => c === first);
-  if (allSame) {
+  if (isWon(board.value)) {
     won.value = true;
     const m = moves.value;
     if (bestMoves.value === null || m < bestMoves.value) {
@@ -167,7 +117,7 @@ onMounted(() => {
 const currentColor = computed(() => (board.value.length ? board.value[0] : 0));
 const regionSet = computed(() => {
   if (!board.value.length) return new Uint8Array(0);
-  return getRegion();
+  return computeRegion(board.value, gridSize.value);
 });
 </script>
 

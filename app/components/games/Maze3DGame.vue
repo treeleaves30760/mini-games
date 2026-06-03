@@ -4,6 +4,16 @@
    torch light + fog for atmosphere, glowing exit, live minimap.
    Three.js is dynamically imported on the client only (SSG-safe). */
 
+import {
+  genMaze as _genMaze,
+  bfsGoal as _bfsGoal,
+  canMove as _canMove,
+  worldOf as _worldOf,
+  FWD,
+  WALLKEY,
+} from "~/games/maze3d";
+import { makeRng } from "~/utils/rng";
+
 const accent = "#5ce0c6";
 const CLEARED_KEY = "playground.maze3d.cleared";
 
@@ -12,8 +22,6 @@ const DIFFS = [
   { key: "medium", label: "中", w: 8, h: 8 },
   { key: "hard", label: "大", w: 11, h: 11 },
 ];
-const FWD = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // N,E,S,W → (dCol,dRow)
-const WALLKEY = ["N", "E", "S", "W"];
 
 // constants (world units)
 const CS = 3;
@@ -51,59 +59,17 @@ let px = 0, pz = 0, yaw = 0, tx = 0, tz = 0, tyaw = 0;
 
 /* ---------- maze ---------- */
 function genMaze(w, h) {
-  W = w;
-  H = h;
-  cells = [];
-  for (let r = 0; r < h; r++)
-    for (let c = 0; c < w; c++) cells.push({ c, r, N: true, E: true, S: true, W: true, vis: false });
-  const at = (c, r) => (c < 0 || c >= W || r < 0 || r >= H ? null : cells[r * W + c]);
-  const dirs = [["N", 0, -1, "S"], ["E", 1, 0, "W"], ["S", 0, 1, "N"], ["W", -1, 0, "E"]];
-  const start = at(0, 0);
-  start.vis = true;
-  const stack = [start];
-  while (stack.length) {
-    const cur = stack[stack.length - 1];
-    const nbs = [];
-    for (const [wall, dx, dy, opp] of dirs) {
-      const nb = at(cur.c + dx, cur.r + dy);
-      if (nb && !nb.vis) nbs.push([wall, nb, opp]);
-    }
-    if (nbs.length) {
-      const [wall, nb, opp] = nbs[(Math.random() * nbs.length) | 0];
-      cur[wall] = false;
-      nb[opp] = false;
-      nb.vis = true;
-      stack.push(nb);
-    } else stack.pop();
-  }
+  const rng = makeRng(null); // random each time (no seed prop on this game)
+  const data = _genMaze(w, h, rng);
+  W = data.W;
+  H = data.H;
+  cells = data.cells;
 }
 function bfsGoal() {
-  const dist = new Array(W * H).fill(-1);
-  dist[0] = 0;
-  let far = 0;
-  const q = [0];
-  const dirs = [["N", 0, -1], ["E", 1, 0], ["S", 0, 1], ["W", -1, 0]];
-  while (q.length) {
-    const idx = q.shift();
-    const c = idx % W;
-    const r = (idx / W) | 0;
-    for (const [wall, dx, dy] of dirs) {
-      if (cells[idx][wall]) continue;
-      const nc = c + dx;
-      const nr = r + dy;
-      if (nc < 0 || nc >= W || nr < 0 || nr >= H) continue;
-      const nidx = nr * W + nc;
-      if (dist[nidx] < 0) {
-        dist[nidx] = dist[idx] + 1;
-        if (dist[nidx] > dist[far]) far = nidx;
-        q.push(nidx);
-      }
-    }
-  }
-  goal = { c: far % W, r: (far / W) | 0 };
+  goal = _bfsGoal(cells, W, H);
 }
-const worldOf = (c, r) => ({ x: (c - (W - 1) / 2) * CS, z: (r - (H - 1) / 2) * CS });
-const canMove = (c, r, f) => !cells[r * W + c][WALLKEY[f]];
+const worldOf = (c, r) => _worldOf(c, r, W, H, CS);
+const canMove = (c, r, f) => _canMove(cells, W, c, r, f);
 
 /* ---------- three.js world ---------- */
 function buildWorld() {

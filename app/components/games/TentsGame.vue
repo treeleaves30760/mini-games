@@ -2,6 +2,20 @@
 /* 帳篷 Tents and Trees — place tents next to trees; no two tents touch (8-dir);
    row/col clue counts must match; perfect tent-tree matching required. */
 
+import {
+  cellIdx as idx,
+  inBounds,
+  ORTH,
+  DIAG8,
+  bipartiteMatch,
+  buildPuzzle,
+  isWin as checkIsWin,
+  CELL_TREE,
+  CELL_TENT,
+  CELL_GRASS,
+  CELL_EMPTY,
+} from "~/games/tents";
+
 const accent = "#5bb368";
 
 const props = defineProps({
@@ -31,103 +45,11 @@ const colClues = ref([]);
 const gameWon  = ref(false);
 const showOverlay = ref(false);
 
-// ---- Helpers ----
-function idx(r, c, N) { return r * N + c; }
-function inBounds(r, c, N) { return r >= 0 && r < N && c >= 0 && c < N; }
-
-const ORTH = [[-1,0],[1,0],[0,-1],[0,1]];
-const DIAG8 = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-
-// ---- Bipartite matching (augmenting path) for tent-tree pairing ----
-// tents: list of cell indices where player placed tents
-// trees: list of cell indices that are trees
-// adjacency: tent i is adjacent (orthogonal) to tree j
-function bipartiteMatch(tentIndices, treeIndices, N) {
-  if (tentIndices.length === 0 && treeIndices.length === 0) return true;
-  if (tentIndices.length !== treeIndices.length) return false;
-
-  const treePos = new Map(); // cellIdx -> treeIndex
-  treeIndices.forEach((ci, j) => treePos.set(ci, j));
-
-  const T = treeIndices.length;
-  const matchTent = new Array(tentIndices.length).fill(-1); // tentI -> treeJ
-  const matchTree = new Array(T).fill(-1); // treeJ -> tentI
-
-  // Build adjacency: for each tent, which trees are orthogonally adjacent?
-  const adj = tentIndices.map(ti => {
-    const r = Math.floor(ti / N);
-    const c = ti % N;
-    const neighbors = [];
-    for (const [dr, dc] of ORTH) {
-      const nr = r + dr, nc = c + dc;
-      if (!inBounds(nr, nc, N)) continue;
-      const ni = idx(nr, nc, N);
-      if (treePos.has(ni)) neighbors.push(treePos.get(ni));
-    }
-    return neighbors;
-  });
-
-  function dfs(tentI, visited) {
-    for (const treeJ of adj[tentI]) {
-      if (visited[treeJ]) continue;
-      visited[treeJ] = true;
-      if (matchTree[treeJ] === -1 || dfs(matchTree[treeJ], visited)) {
-        matchTree[treeJ] = tentI;
-        matchTent[tentI] = treeJ;
-        return true;
-      }
-    }
-    return false;
-  }
-
-  let matched = 0;
-  for (let i = 0; i < tentIndices.length; i++) {
-    const visited = new Array(T).fill(false);
-    if (dfs(i, visited)) matched++;
-  }
-  return matched === tentIndices.length;
-}
-
 // ---- Win check ----
 function checkWin() {
   if (gameWon.value) return;
   const N = gridSize.value;
-  const c = cells.value;
-
-  // Count tents in each row/col
-  for (let r = 0; r < N; r++) {
-    let count = 0;
-    for (let col = 0; col < N; col++) if (c[idx(r, col, N)] === 2) count++;
-    if (count !== rowClues.value[r]) return;
-  }
-  for (let col = 0; col < N; col++) {
-    let count = 0;
-    for (let r = 0; r < N; r++) if (c[idx(r, col, N)] === 2) count++;
-    if (count !== colClues.value[col]) return;
-  }
-
-  // No two tents 8-adjacent
-  const tentCells = [];
-  for (let i = 0; i < N * N; i++) if (c[i] === 2) tentCells.push(i);
-  for (const ti of tentCells) {
-    const r = Math.floor(ti / N), col = ti % N;
-    for (const [dr, dc] of DIAG8) {
-      const nr = r + dr, nc = col + dc;
-      if (!inBounds(nr, nc, N)) continue;
-      if (c[idx(nr, nc, N)] === 2) return;
-    }
-  }
-
-  // Count trees
-  const treeCells = [];
-  for (let i = 0; i < N * N; i++) if (c[i] === 1) treeCells.push(i);
-
-  // Same count
-  if (tentCells.length !== treeCells.length) return;
-  if (tentCells.length === 0) return;
-
-  // Perfect bipartite matching
-  if (!bipartiteMatch(tentCells, treeCells, N)) return;
+  if (!checkIsWin(cells.value, rowClues.value, colClues.value, N)) return;
 
   // Win!
   gameWon.value = true;
@@ -140,9 +62,9 @@ function onCellPointerDown(e, i) {
   e.preventDefault();
   if (gameWon.value) return;
   const c = cells.value;
-  if (c[i] === 1) return; // tree, fixed
+  if (c[i] === CELL_TREE) return; // tree, fixed
   // Cycle: 0 → 2(tent) → 3(grass) → 0
-  const next = c[i] === 0 ? 2 : c[i] === 2 ? 3 : 0;
+  const next = c[i] === CELL_EMPTY ? CELL_TENT : c[i] === CELL_TENT ? CELL_GRASS : CELL_EMPTY;
   const updated = [...c];
   updated[i] = next;
   cells.value = updated;
@@ -154,22 +76,22 @@ function rowTentCount(r) {
   const N = gridSize.value;
   const c = cells.value;
   let count = 0;
-  for (let col = 0; col < N; col++) if (c[idx(r, col, N)] === 2) count++;
+  for (let col = 0; col < N; col++) if (c[idx(r, col, N)] === CELL_TENT) count++;
   return count;
 }
 function colTentCount(col) {
   const N = gridSize.value;
   const c = cells.value;
   let count = 0;
-  for (let r = 0; r < N; r++) if (c[idx(r, col, N)] === 2) count++;
+  for (let r = 0; r < N; r++) if (c[idx(r, col, N)] === CELL_TENT) count++;
   return count;
 }
 
 const tentCount = computed(() => {
-  return cells.value.filter(v => v === 2).length;
+  return cells.value.filter(v => v === CELL_TENT).length;
 });
 const treeCount = computed(() => {
-  return cells.value.filter(v => v === 1).length;
+  return cells.value.filter(v => v === CELL_TREE).length;
 });
 const satisfiedLines = computed(() => {
   const N = gridSize.value;
@@ -183,83 +105,21 @@ const satisfiedLines = computed(() => {
 function isTentConflict(i) {
   const N = gridSize.value;
   const c = cells.value;
-  if (c[i] !== 2) return false;
+  if (c[i] !== CELL_TENT) return false;
   const r = Math.floor(i / N), col = i % N;
   for (const [dr, dc] of DIAG8) {
     const nr = r + dr, nc = col + dc;
     if (!inBounds(nr, nc, N)) continue;
-    if (c[idx(nr, nc, N)] === 2) return true;
+    if (c[idx(nr, nc, N)] === CELL_TENT) return true;
   }
   return false;
-}
-
-// ---- Puzzle generation ----
-function buildPuzzle(rng, N) {
-  // Target tents: ~20% of cells
-  const target = Math.max(3, Math.round(N * N * 0.20));
-
-  const grid = new Array(N * N).fill(0); // 0=empty, 1=tree, 2=tent(solution)
-
-  let placed = 0;
-  const maxAttempts = N * N * 20;
-
-  for (let attempt = 0; attempt < maxAttempts && placed < target; attempt++) {
-    // Pick random empty cell as TENT candidate
-    const emptyTent = [];
-    for (let i = 0; i < N * N; i++) if (grid[i] === 0) emptyTent.push(i);
-    if (emptyTent.length === 0) break;
-    const ti = rng.pick(emptyTent);
-    const tr = Math.floor(ti / N), tc = ti % N;
-
-    // Check tent has no existing tent in 8-neighbors
-    let tentOk = true;
-    for (const [dr, dc] of DIAG8) {
-      const nr = tr + dr, nc = tc + dc;
-      if (!inBounds(nr, nc, N)) continue;
-      if (grid[idx(nr, nc, N)] === 2) { tentOk = false; break; }
-    }
-    if (!tentOk) continue;
-
-    // Orthogonal neighbors that are empty (candidates for tree)
-    const emptyOrth = [];
-    for (const [dr, dc] of ORTH) {
-      const nr = tr + dr, nc = tc + dc;
-      if (!inBounds(nr, nc, N)) continue;
-      if (grid[idx(nr, nc, N)] === 0) emptyOrth.push([nr, nc]);
-    }
-    if (emptyOrth.length === 0) continue;
-
-    // Pick a random orthogonal empty cell as TREE
-    const [treeR, treeC] = rng.pick(emptyOrth);
-    const treeI = idx(treeR, treeC, N);
-
-    // Place both
-    grid[ti] = 2;     // solution tent
-    grid[treeI] = 1;  // tree
-    placed++;
-  }
-
-  // Compute clues from solution
-  const rClues = new Array(N).fill(0);
-  const cClues = new Array(N).fill(0);
-  for (let i = 0; i < N * N; i++) {
-    if (grid[i] === 2) {
-      rClues[Math.floor(i / N)]++;
-      cClues[i % N]++;
-    }
-  }
-
-  // Strip tents for player board (keep trees)
-  const playerGrid = grid.map(v => (v === 2 ? 0 : v));
-
-  return { playerGrid, rClues, cClues };
 }
 
 // ---- Init / regenerate ----
 function initGame(seedOverride) {
   const rng = makeRng(seedOverride !== undefined ? seedOverride : props.seed);
   const N = gridSize.value;
-  const { playerGrid, rClues, cClues } = buildPuzzle(rng, N);
+  const { playerGrid, rowClues: rClues, colClues: cClues } = buildPuzzle(rng, N);
   cells.value = playerGrid;
   rowClues.value = rClues;
   colClues.value = cClues;
@@ -272,7 +132,7 @@ function newPuzzle() {
 }
 
 function clearBoard() {
-  const updated = cells.value.map(v => (v === 1 ? 1 : 0));
+  const updated = cells.value.map(v => (v === CELL_TREE ? CELL_TREE : CELL_EMPTY));
   cells.value = updated;
   gameWon.value = false;
   showOverlay.value = false;

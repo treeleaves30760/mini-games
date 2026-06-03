@@ -1,17 +1,18 @@
 <script setup>
 /* 貪食蛇 Snake — canvas, grid-stepped, DPR-crisp.
    Keyboard + WASD + swipe + on-screen D-pad. High score in localStorage. */
+import {
+  stepSnake as _stepSnake,
+  placeFood as _placeFood,
+  DIRS,
+  OPP,
+} from "~/games/snake";
+import { makeRng } from "~/utils/rng";
 
 const GRID = 19;
 const accent = "#9ce85a";
 const accentRGB = hexToRgb(accent);
 const BEST_KEY = "playground.snake.best";
-
-const DIRS = {
-  up: { x: 0, y: -1 }, down: { x: 0, y: 1 },
-  left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
-};
-const OPP = { up: "down", down: "up", left: "right", right: "left" };
 
 // ---- reactive HUD / UI ----
 const canvasRef = ref(null);
@@ -82,43 +83,24 @@ function step() {
     const d = queue.shift();
     if (d !== OPP[dir]) { dir = d; break; }
   }
-  const d = DIRS[dir];
-  let nx = snake[0].x + d.x;
-  let ny = snake[0].y + d.y;
 
-  if (wrap.value) {
-    nx = (nx + GRID) % GRID;
-    ny = (ny + GRID) % GRID;
-  } else if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) {
-    return gameOver();
-  }
+  const result = _stepSnake(snake, dir, food, GRID, wrap.value, makeRng());
+  if (result.dead) return gameOver();
 
-  const ate = food && nx === food.x && ny === food.y;
-  const limit = ate ? snake.length : snake.length - 1;
-  for (let i = 0; i < limit; i++) {
-    if (snake[i].x === nx && snake[i].y === ny) return gameOver();
-  }
+  snake = result.snake;
+  food = result.food;
 
-  snake.unshift({ x: nx, y: ny });
-  if (ate) {
+  if (result.ate) {
     score.value += 10;
     if (score.value % 50 === 0) {
       level.value++;
       stepInterval = Math.max(60, stepInterval - 12);
     }
-    placeFood();
-  } else {
-    snake.pop();
   }
 }
 
 function placeFood() {
-  const occ = new Set(snake.map((s) => s.x + "," + s.y));
-  const free = [];
-  for (let y = 0; y < GRID; y++)
-    for (let x = 0; x < GRID; x++)
-      if (!occ.has(x + "," + y)) free.push({ x, y });
-  food = free.length ? free[(Math.random() * free.length) | 0] : null;
+  food = _placeFood(snake, GRID, makeRng());
 }
 
 // ---- rendering ----

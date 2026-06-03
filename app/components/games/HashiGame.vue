@@ -1,6 +1,16 @@
 <script setup>
 /* 數橋 Hashi (Hashiwokakero / Bridges) — connect numbered islands with 1-2 bridges.
-   Seeded generation always yields a solvable, connected puzzle. */
+   Seeded generation always yields a solvable, connected puzzle.
+   Pure game logic lives in ~/games/hashi.ts (framework-free, unit-tested). */
+
+import {
+  buildPuzzle,
+  DIFFICULTIES,
+  wouldCross as hapiWouldCross,
+  pathClear as hapiPathClear,
+  islandDegree as hapiIslandDegree,
+  checkWin as hapiCheckWin,
+} from "~/games/hashi";
 
 const accent = "#9d8cff";
 
@@ -10,12 +20,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['solved']);
 
-// ---- difficulty config ----
-const DIFFICULTIES = [
-  { key: 'easy',   label: '簡單', cols: 7,  rows: 7,  targetIslands: 6  },
-  { key: 'normal', label: '普通', cols: 9,  rows: 9,  targetIslands: 10 },
-  { key: 'hard',   label: '困難', cols: 11, rows: 11, targetIslands: 14 },
-];
+// ---- difficulty config (from module) ----
 const difficulty = ref('normal');
 
 const currentDiff = computed(() => DIFFICULTIES.find(d => d.key === difficulty.value) || DIFFICULTIES[1]);
@@ -24,7 +29,7 @@ const currentDiff = computed(() => DIFFICULTIES.find(d => d.key === difficulty.v
 const cols       = ref(9);
 const rows       = ref(9);
 const islands    = ref([]);   // [{ id, r, c, clue }]
-const bridges    = ref([]);   // [{ id, r1,c1, r2,c2, count }] player-placed
+const bridges    = ref([]);   // [{ id1, id2, r1,c1, r2,c2, count }] player-placed
 const solvedIslands = ref(0);
 const totalIslands  = ref(0);
 const totalBridges  = ref(0);
@@ -34,161 +39,6 @@ const overlay    = reactive({ open: false, title: '', sub: '' });
 // ---- interaction state ----
 const selectedId = ref(null);   // selected island id
 const shakeId    = ref(null);   // island id to shake (invalid tap)
-
-// ---- generation helpers ----
-// direction vectors: N, E, S, W
-const DIRS4 = [[-1,0],[0,1],[1,0],[0,-1]];
-
-function buildPuzzle(rng, diff) {
-  const { cols: gc, rows: gr, targetIslands: target } = diff;
-
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const result = tryGenerate(rng, gc, gr, target);
-    if (result && result.islands.length >= Math.ceil(target * 0.6)) {
-      return result;
-    }
-  }
-  // fallback: try once more with a fresh random sub-rng
-  return tryGenerate(rng, gc, gr, target) || { islands: [], solution: [], gc, gr };
-}
-
-function tryGenerate(rng, gc, gr, target) {
-  // islandGrid[r][c] = island id (or -1)
-  const islandGrid = Array.from({ length: gr }, () => Array(gc).fill(-1));
-  // bridgeGrid[r][c] = { h: count, v: count } — occupied cells by placed bridges
-  // orientation: 'h' = horizontal, 'v' = vertical
-  const occupied = Array.from({ length: gr }, () => Array(gc).fill(null));
-  // null = free, 'h' = horizontal bridge passes through, 'v' = vertical bridge passes through
-
-  const islandList = [];
-  const solutionEdges = []; // { id1, id2, count }
-
-  function isInterior(r, c) {
-    return r >= 1 && r < gr - 1 && c >= 1 && c < gc - 1;
-  }
-
-  function allNeighborsEmpty(r, c) {
-    // check the cell itself and orthogonal neighbors
-    for (const [dr, dc] of DIRS4) {
-      const nr = r + dr, nc = c + dc;
-      if (nr >= 0 && nr < gr && nc >= 0 && nc < gc) {
-        if (islandGrid[nr][nc] !== -1) return false;
-      }
-    }
-    return islandGrid[r][c] === -1;
-  }
-
-  function canPlaceBridge(r1, c1, r2, c2, orientation) {
-    // check cells along the path (excluding endpoints)
-    const dr = r2 > r1 ? 1 : r2 < r1 ? -1 : 0;
-    const dc = c2 > c1 ? 1 : c2 < c1 ? -1 : 0;
-    let r = r1 + dr, c = c1 + dc;
-    while (r !== r2 || c !== c2) {
-      // cell must not be an island
-      if (islandGrid[r][c] !== -1) return false;
-      // cell must not be occupied by a perpendicular bridge
-      if (occupied[r][c] !== null && occupied[r][c] !== orientation) return false;
-      r += dr; c += dc;
-    }
-    return true;
-  }
-
-  function markBridge(r1, c1, r2, c2, orientation) {
-    const dr = r2 > r1 ? 1 : r2 < r1 ? -1 : 0;
-    const dc = c2 > c1 ? 1 : c2 < c1 ? -1 : 0;
-    let r = r1 + dr, c = c1 + dc;
-    while (r !== r2 || c !== c2) {
-      occupied[r][c] = orientation;
-      r += dr; c += dc;
-    }
-  }
-
-  // place first island at a random interior cell
-  {
-    const r0 = rng.int(1, gr - 2);
-    const c0 = rng.int(1, gc - 2);
-    const id = 0;
-    islandGrid[r0][c0] = id;
-    islandList.push({ id, r: r0, c: c0, degree: 0 });
-  }
-
-  let attempts = 0;
-  const maxAttempts = target * 60;
-
-  while (islandList.length < target && attempts < maxAttempts) {
-    attempts++;
-    const src = rng.pick(islandList);
-    const dir = rng.pick(DIRS4);
-    const [dr, dc] = dir;
-    const orientation = dr === 0 ? 'h' : 'v';
-
-    // scan outward for a landing cell distance >= 2
-    let dist = 2;
-    const maxDist = orientation === 'h' ? gc : gr;
-
-    // collect candidates
-    const candidates = [];
-    for (let d = 2; d < maxDist; d++) {
-      const nr = src.r + dr * d;
-      const nc = src.c + dc * d;
-      if (nr < 0 || nr >= gr || nc < 0 || nc >= gc) break;
-      // must be interior
-      if (!isInterior(nr, nc)) continue;
-      // must be free of islands (cell + 4 neighbors)
-      if (!allNeighborsEmpty(nr, nc)) continue;
-      // path must be clear
-      if (!canPlaceBridge(src.r, src.c, nr, nc, orientation)) continue;
-      candidates.push({ r: nr, c: nc, d });
-    }
-    void dist; void maxDist; // suppress lint
-
-    if (candidates.length === 0) continue;
-
-    const dest = rng.pick(candidates);
-    const bridgeCount = rng.int(1, 2);
-
-    // place island
-    const newId = islandList.length;
-    islandGrid[dest.r][dest.c] = newId;
-    islandList.push({ id: newId, r: dest.r, c: dest.c, degree: 0 });
-
-    // add bridge
-    markBridge(src.r, src.c, dest.r, dest.c, orientation);
-    solutionEdges.push({ id1: src.id, id2: newId, count: bridgeCount });
-    src.degree += bridgeCount;
-    islandList[newId].degree += bridgeCount;
-  }
-
-  // must have at least 3 islands to be interesting
-  if (islandList.length < 3) return null;
-
-  // verify all islands are connected via solution edges (BFS)
-  const adj = new Map();
-  for (const isl of islandList) adj.set(isl.id, []);
-  for (const e of solutionEdges) {
-    adj.get(e.id1).push(e.id2);
-    adj.get(e.id2).push(e.id1);
-  }
-  const visited = new Set();
-  const queue = [islandList[0].id];
-  visited.add(islandList[0].id);
-  while (queue.length) {
-    const cur = queue.shift();
-    for (const nb of adj.get(cur)) {
-      if (!visited.has(nb)) {
-        visited.add(nb);
-        queue.push(nb);
-      }
-    }
-  }
-  if (visited.size < islandList.length) return null;
-
-  return {
-    islands: islandList.map(isl => ({ id: isl.id, r: isl.r, c: isl.c, clue: isl.degree })),
-    solution: solutionEdges,
-    gc, gr,
-  };
-}
 
 // ---- initialize game from puzzle data ----
 function applyPuzzle(puzzle) {
@@ -213,61 +63,6 @@ function getBridge(id1, id2) {
 
 function islandById(id) {
   return islands.value.find(i => i.id === id) || null;
-}
-
-function islandAt(r, c) {
-  return islands.value.find(i => i.r === r && i.c === c) || null;
-}
-
-// degree of island = sum of bridge counts touching it
-function islandDegree(id) {
-  let total = 0;
-  for (const b of bridges.value) {
-    if (b.id1 === id || b.id2 === id) total += b.count;
-  }
-  return total;
-}
-
-// ---- crossing detection ----
-// a bridge between (r1,c1)-(r2,c2) orientation oNew crosses an existing bridge?
-function wouldCross(r1, c1, r2, c2) {
-  // Determine orientation of new bridge
-  const newH = r1 === r2;
-  for (const b of bridges.value) {
-    if (b.count === 0) continue;
-    const bH = b.r1 === b.r2;
-    if (newH === bH) continue; // parallel bridges never cross
-
-    // one is horizontal, one is vertical
-    let hr1, hc1, hc2, vr1, vr2, vc1;
-    if (newH) {
-      // new is horizontal; b is vertical
-      [hr1, hc1, hc2] = [r1, Math.min(c1,c2), Math.max(c1,c2)];
-      [vr1, vr2, vc1] = [Math.min(b.r1,b.r2), Math.max(b.r1,b.r2), b.c1];
-    } else {
-      // new is vertical; b is horizontal
-      [hr1, hc1, hc2] = [b.r1, Math.min(b.c1,b.c2), Math.max(b.c1,b.c2)];
-      [vr1, vr2, vc1] = [Math.min(r1,r2), Math.max(r1,r2), c1];
-    }
-    // they cross if the vertical column is strictly between h endpoints
-    // and horizontal row is strictly between v endpoints
-    if (vc1 > hc1 && vc1 < hc2 && hr1 > vr1 && hr1 < vr2) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// check path between two islands is clear of any island in between
-function pathClear(isl1, isl2) {
-  const dr = isl2.r === isl1.r ? 0 : (isl2.r > isl1.r ? 1 : -1);
-  const dc = isl2.c === isl1.c ? 0 : (isl2.c > isl1.c ? 1 : -1);
-  let r = isl1.r + dr, c = isl1.c + dc;
-  while (r !== isl2.r || c !== isl2.c) {
-    if (islandAt(r, c)) return false;
-    r += dr; c += dc;
-  }
-  return true;
 }
 
 // ---- interaction ----
@@ -295,13 +90,13 @@ function onIslandClick(id) {
   }
 
   // path must be clear of islands in between
-  if (!pathClear(src, dst)) {
+  if (!hapiPathClear(src, dst, islands.value)) {
     triggerShake(id);
     return;
   }
 
   // must not cross existing bridges
-  if (wouldCross(src.r, src.c, dst.r, dst.c)) {
+  if (hapiWouldCross(src.r, src.c, dst.r, dst.c, bridges.value)) {
     triggerShake(id);
     return;
   }
@@ -324,7 +119,7 @@ function onIslandClick(id) {
 
   selectedId.value = null;
   updateStats();
-  checkWin();
+  triggerWinCheck();
 }
 
 function triggerShake(id) {
@@ -337,42 +132,15 @@ function updateStats() {
   let sat = 0;
   let totalB = 0;
   for (const isl of islands.value) {
-    if (islandDegree(isl.id) === isl.clue) sat++;
+    if (hapiIslandDegree(isl.id, bridges.value) === isl.clue) sat++;
   }
   for (const b of bridges.value) totalB += b.count;
   solvedIslands.value = sat;
   totalBridges.value  = totalB;
 }
 
-function checkWin() {
-  // every island degree equals clue
-  for (const isl of islands.value) {
-    if (islandDegree(isl.id) !== isl.clue) return;
-  }
-
-  // all islands connected via current bridges (BFS)
-  const adj = new Map();
-  for (const isl of islands.value) adj.set(isl.id, []);
-  for (const b of bridges.value) {
-    if (b.count > 0) {
-      adj.get(b.id1).push(b.id2);
-      adj.get(b.id2).push(b.id1);
-    }
-  }
-  const visited = new Set();
-  if (islands.value.length === 0) return;
-  const queue = [islands.value[0].id];
-  visited.add(islands.value[0].id);
-  while (queue.length) {
-    const cur = queue.shift();
-    for (const nb of adj.get(cur)) {
-      if (!visited.has(nb)) {
-        visited.add(nb);
-        queue.push(nb);
-      }
-    }
-  }
-  if (visited.size < islands.value.length) return;
+function triggerWinCheck() {
+  if (!hapiCheckWin(islands.value, bridges.value)) return;
 
   // WIN
   gameWon.value   = true;
@@ -438,7 +206,7 @@ function cy(r) { return PAD + r * CELL + CELL / 2; }
 
 // island ring color
 function ringColor(id) {
-  const deg = islandDegree(id);
+  const deg = hapiIslandDegree(id, bridges.value);
   const isl = islandById(id);
   if (!isl) return 'var(--line)';
   if (deg === isl.clue) return 'var(--accent)';
@@ -446,13 +214,16 @@ function ringColor(id) {
   return 'var(--line-strong)';
 }
 
+// thin wrapper used in template :class bindings
+function islandDegree(id) { return hapiIslandDegree(id, bridges.value); }
+
 function isSelected(id) { return selectedId.value === id; }
 
 // are both endpoints satisfied?
 function bridgeSatisfied(b) {
   const i1 = islandById(b.id1);
   const i2 = islandById(b.id2);
-  return i1 && i2 && islandDegree(b.id1) === i1.clue && islandDegree(b.id2) === i2.clue;
+  return i1 && i2 && hapiIslandDegree(b.id1, bridges.value) === i1.clue && hapiIslandDegree(b.id2, bridges.value) === i2.clue;
 }
 
 // single line between two island centers, optional offset for double bridge

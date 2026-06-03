@@ -2,6 +2,13 @@
 /* 河內塔 Tower of Hanoi — click pegs to lift/drop disks.
    N disks (3–6), seeded N in daily. Win when all disks on peg C. */
 
+// ---- pure game logic (shared with unit tests) ----
+import {
+  initPegs as createPegs,
+  isLegalMove,
+  isWin as hanoiIsWin,
+} from "~/games/hanoi";
+
 const accent = "#4dd4ac";
 const BEST_KEY = "playground.hanoi.best";
 
@@ -27,9 +34,7 @@ const optimal = computed(() => Math.pow(2, numDisks.value) - 1);
 const bestForN = computed(() => bestMap.value[numDisks.value] ?? null);
 
 function initPegs(n) {
-  const top = [];
-  for (let i = n; i >= 1; i--) top.push(i);
-  pegs.value = [top, [], []];
+  pegs.value = createPegs(n);
   selected.value = -1;
   moves.value = 0;
   won.value = false;
@@ -67,15 +72,13 @@ function clickPeg(i) {
     }
     const from = selected.value;
     const to = i;
-    const fromPeg = pegs.value[from];
-    const toPeg = pegs.value[to];
-    const disk = fromPeg[fromPeg.length - 1];
-    if (toPeg.length > 0 && toPeg[toPeg.length - 1] < disk) {
+    if (!isLegalMove(pegs.value, from, to)) {
       selected.value = -1;
       return;
     }
-    fromPeg.pop();
-    toPeg.push(disk);
+    const disk = pegs.value[from][pegs.value[from].length - 1];
+    pegs.value[from].pop();
+    pegs.value[to].push(disk);
     moves.value++;
     selected.value = -1;
     checkWin();
@@ -83,7 +86,7 @@ function clickPeg(i) {
 }
 
 function checkWin() {
-  if (pegs.value[2].length === numDisks.value) {
+  if (hanoiIsWin(pegs.value, numDisks.value)) {
     won.value = true;
     const isOpt = moves.value === optimal.value;
     overlay.optimal = isOpt;

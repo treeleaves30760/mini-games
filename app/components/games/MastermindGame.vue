@@ -4,16 +4,15 @@
 
 const accent = "#b388ff";
 const SAVE_KEY = "playground.mastermind.stats";
-const MAX_TRIES = 8;
-const CODE_LEN = 4;
+
+// ---- pure game logic (shared with unit tests) ----
+import { CODE_LEN, MAX_TRIES, generateSecret, scoreMastermind, isWin as mastermindIsWin } from "~/games/mastermind";
 
 const props = defineProps({
   seed:  { type: [String, Number], default: null },
   daily: { type: Boolean, default: false },
 });
 const emit = defineEmits(["solved"]);
-
-const rng = makeRng(props.seed);
 
 // ---- state ----
 const secret    = ref([]);
@@ -27,17 +26,9 @@ const stats     = reactive({ wins: 0, losses: 0, best: null });
 const shake     = ref(false);
 const errorMsg  = ref("");
 
-function generateSecret() {
-  const digits = [0,1,2,3,4,5,6,7,8,9];
-  rng.shuffle(digits);
-  return digits.slice(0, CODE_LEN);
-}
-
 function init() {
   const r = makeRng(props.seed);
-  const digits = [0,1,2,3,4,5,6,7,8,9];
-  r.shuffle(digits);
-  secret.value = digits.slice(0, CODE_LEN);
+  secret.value = generateSecret(r);
   input.value = [];
   history.value = [];
   gameOver.value = false;
@@ -48,11 +39,7 @@ function init() {
 }
 
 function score(guess, sec) {
-  let a = 0, b = 0;
-  for (let i = 0; i < CODE_LEN; i++) {
-    if (guess[i] === sec[i]) a++;
-    else if (sec.includes(guess[i])) b++;
-  }
+  const { exact: a, misplaced: b } = scoreMastermind(guess, sec);
   return { a, b };
 }
 
@@ -83,7 +70,7 @@ function submit() {
   history.value.push({ guess, a, b });
   input.value = [];
 
-  if (a === CODE_LEN) {
+  if (mastermindIsWin({ exact: a, misplaced: b })) {
     won.value = true;
     gameOver.value = true;
     const attempts = history.value.length;

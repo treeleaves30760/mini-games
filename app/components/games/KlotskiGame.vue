@@ -4,45 +4,21 @@
    Drag or select-then-click-empty to move blocks.
    Undo + reset. Win: 2×2 Cao Cao reaches rows 3-4, cols 1-2. */
 
+// ---- pure logic (shared, unit-tested in app/games/klotski.ts) ----
+import {
+  COLS,
+  ROWS,
+  VALID_LAYOUTS,
+  blockDims,
+  blockCells,
+  buildOccupied,
+  canMove,
+  shiftBlock,
+  isWon,
+} from "~/games/klotski";
+
 const accent = "#f4a261";
 const SAVE_KEY = "playground.klotski.best";
-
-const COLS = 4;
-const ROWS = 5;
-
-// Two canonical, known-solvable Klotski layouts.
-const VALID_LAYOUTS = [
-  {
-    name: "橫刀立馬",
-    blocks: [
-      { id: 0, type: "2x2",  r: 0, c: 1 }, // Cao Cao
-      { id: 1, type: "2x1v", r: 0, c: 0 },
-      { id: 2, type: "2x1v", r: 0, c: 3 },
-      { id: 3, type: "2x1v", r: 2, c: 0 },
-      { id: 4, type: "2x1v", r: 2, c: 3 },
-      { id: 5, type: "1x2h", r: 2, c: 1 },
-      { id: 6, type: "1x1",  r: 3, c: 1 },
-      { id: 7, type: "1x1",  r: 3, c: 2 },
-      { id: 8, type: "1x1",  r: 4, c: 0 },
-      { id: 9, type: "1x1",  r: 4, c: 3 },
-    ],
-  },
-  {
-    name: "百萬軍中",
-    blocks: [
-      { id: 0, type: "2x2",  r: 0, c: 1 }, // Cao Cao
-      { id: 1, type: "2x1v", r: 0, c: 0 },
-      { id: 2, type: "2x1v", r: 0, c: 3 },
-      { id: 3, type: "2x1v", r: 2, c: 1 },
-      { id: 4, type: "2x1v", r: 2, c: 2 },
-      { id: 5, type: "1x2h", r: 4, c: 1 },
-      { id: 6, type: "1x1",  r: 2, c: 0 },
-      { id: 7, type: "1x1",  r: 2, c: 3 },
-      { id: 8, type: "1x1",  r: 3, c: 0 },
-      { id: 9, type: "1x1",  r: 3, c: 3 },
-    ],
-  },
-];
 
 const props = defineProps({
   seed: { type: [String, Number], default: null },
@@ -50,6 +26,7 @@ const props = defineProps({
 });
 const emit = defineEmits(["solved"]);
 
+// ---- state ----
 const blocks = ref([]);
 const moveCount = ref(0);
 const won = ref(false);
@@ -61,54 +38,6 @@ const layoutName = ref("");
 const selectedId = ref(null); // currently selected block id
 
 const boardRef = ref(null);
-
-// ---- geometry ----
-function blockDims(type) {
-  if (type === "2x2")  return { w: 2, h: 2 };
-  if (type === "1x2h") return { w: 2, h: 1 };
-  if (type === "2x1v") return { w: 1, h: 2 };
-  return { w: 1, h: 1 };
-}
-
-function blockCells(b) {
-  const { w, h } = blockDims(b.type);
-  const cells = [];
-  for (let dr = 0; dr < h; dr++)
-    for (let dc = 0; dc < w; dc++)
-      cells.push({ r: b.r + dr, c: b.c + dc });
-  return cells;
-}
-
-function buildOccupied(blks) {
-  const map = {};
-  for (const b of blks)
-    for (const { r, c } of blockCells(b))
-      map[`${r},${c}`] = b.id;
-  return map;
-}
-
-function canMove(b, dr, dc, blks) {
-  const { w, h } = blockDims(b.type);
-  const occ = buildOccupied(blks.filter((x) => x.id !== b.id));
-  for (let row = b.r; row < b.r + h; row++) {
-    for (let col = b.c; col < b.c + w; col++) {
-      const nr = row + dr;
-      const nc = col + dc;
-      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return false;
-      if (occ[`${nr},${nc}`] !== undefined) return false;
-    }
-  }
-  return true;
-}
-
-function shiftBlock(blks, id, dr, dc) {
-  return blks.map((b) => b.id === id ? { ...b, r: b.r + dr, c: b.c + dc } : { ...b });
-}
-
-function isWon(blks) {
-  const cao = blks.find((b) => b.id === 0);
-  return cao && cao.r === 3 && cao.c === 1;
-}
 
 // ---- persistence ----
 function loadBest() {

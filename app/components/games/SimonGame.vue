@@ -1,5 +1,6 @@
 <script setup>
 /* 記憶序列 Simon — 4-pad deterministic flash sequence, WebAudio tones, undo history. */
+import { buildSimonSequence, checkPress } from "~/games/simon";
 
 const accent = "#59d99a";
 const BEST_KEY = "playground.simon.best";
@@ -57,8 +58,7 @@ function playTone(freq, duration = 0.18) {
 
 // ---- sequence generation ----
 function buildSequence() {
-  const r = makeRng(props.seed);
-  sequence.value = Array.from({ length: SEQ_LEN }, () => r.int(0, 3));
+  sequence.value = buildSimonSequence(makeRng(props.seed), SEQ_LEN);
 }
 
 watch(() => props.seed, () => { buildSequence(); startGame(); });
@@ -112,13 +112,14 @@ function tapPad(padId) {
   if (phase.value !== "input") return;
   // init AudioContext on first user gesture
   getAudio();
-  const expected = sequence.value[inputIndex.value];
   activePad.value = padId;
   playTone(PADS[padId].freq, 0.22);
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => { activePad.value = -1; }, 250);
 
-  if (padId !== expected) {
+  const result = checkPress(sequence.value, round.value, inputIndex.value, padId);
+
+  if (result.verdict === "wrong") {
     // wrong — game over
     phase.value = "over";
     const prev = best.value;
@@ -134,7 +135,7 @@ function tapPad(padId) {
   }
 
   inputIndex.value++;
-  if (inputIndex.value >= round.value) {
+  if (result.verdict === "round-complete") {
     // completed this round
     score.value = round.value;
     const prev = best.value;

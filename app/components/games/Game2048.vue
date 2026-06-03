@@ -1,6 +1,9 @@
 <script setup>
 /* 2048 — reactive tiles, slide + merge animation, keyboard + swipe.
-   Positions are pure CSS (% of board), so no pixel measuring is needed. */
+   Positions are pure CSS (% of board), so no pixel measuring is needed.
+   Core merge/win/over logic lives in ~/games/game2048 (unit-tested). */
+
+import { slideLine, hasWon, isGameOver as checkGameOver } from "~/games/game2048";
 
 const accent = "#c79bff";
 const SIZE = 4;
@@ -120,7 +123,7 @@ function move(dir) {
       score.value += survivor.value;
       const i = tiles.value.findIndex((x) => x.id === absorbed.id);
       if (i >= 0) tiles.value.splice(i, 1);
-      if (survivor.value === 2048 && !won.value) won.value = true;
+      if (!won.value && hasWon([survivor.value])) won.value = true;
     }
     for (const t of tiles.value) t._merged = false;
     addRandomTile();
@@ -137,15 +140,10 @@ function move(dir) {
 }
 
 function isGameOver() {
-  if (emptyCells().length) return false;
-  const grid = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
-  for (const t of tiles.value) grid[t.r][t.c] = t.value;
-  for (let r = 0; r < SIZE; r++)
-    for (let c = 0; c < SIZE; c++) {
-      if (c + 1 < SIZE && grid[r][c] === grid[r][c + 1]) return false;
-      if (r + 1 < SIZE && grid[r][c] === grid[r + 1][c]) return false;
-    }
-  return true;
+  // Delegate to the pure helper from ~/games/game2048
+  const flat = Array(SIZE * SIZE).fill(0);
+  for (const t of tiles.value) flat[t.r * SIZE + t.c] = t.value;
+  return checkGameOver(flat);
 }
 
 function tileClass(t) {

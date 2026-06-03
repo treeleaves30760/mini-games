@@ -11,13 +11,8 @@ const props = defineProps({
 });
 const emit = defineEmits(["solved"]);
 
-// ---- constants ----
-const EMPTY = 0, X = 1, O = 2;
-const WIN_LINES = [
-  [0,1,2],[3,4,5],[6,7,8], // rows
-  [0,3,6],[1,4,7],[2,5,8], // cols
-  [0,4,8],[2,4,6],          // diags
-];
+// ---- pure game logic (unit-tested in app/games/tictactoe.ts) ----
+import { EMPTY, X, O, checkWinner, isDraw as isDrawBoard, getBestMove } from "~/games/tictactoe";
 
 // ---- reactive state ----
 const board = ref(Array(9).fill(EMPTY));
@@ -48,80 +43,6 @@ watch(() => props.seed, () => {
   resetGame();
 });
 
-// ---- minimax ----
-function checkWinner(b) {
-  for (const line of WIN_LINES) {
-    const [a, c, d] = line;
-    if (b[a] !== EMPTY && b[a] === b[c] && b[c] === b[d]) {
-      return { winner: b[a], line };
-    }
-  }
-  return null;
-}
-
-function isDraw_(b) {
-  return b.every(v => v !== EMPTY) && !checkWinner(b);
-}
-
-function minimax(b, depth, isMaximizing, alpha, beta) {
-  const result = checkWinner(b);
-  if (result) return result.winner === O ? 10 - depth : depth - 10;
-  if (b.every(v => v !== EMPTY)) return 0;
-
-  if (isMaximizing) {
-    let best = -Infinity;
-    for (let i = 0; i < 9; i++) {
-      if (b[i] === EMPTY) {
-        b[i] = O;
-        best = Math.max(best, minimax(b, depth + 1, false, alpha, beta));
-        b[i] = EMPTY;
-        alpha = Math.max(alpha, best);
-        if (beta <= alpha) break;
-      }
-    }
-    return best;
-  } else {
-    let best = Infinity;
-    for (let i = 0; i < 9; i++) {
-      if (b[i] === EMPTY) {
-        b[i] = X;
-        best = Math.min(best, minimax(b, depth + 1, true, alpha, beta));
-        b[i] = EMPTY;
-        beta = Math.min(beta, best);
-        if (beta <= alpha) break;
-      }
-    }
-    return best;
-  }
-}
-
-function getBestMove(b) {
-  // easy: random empty cell
-  if (difficulty.value === "easy") {
-    const empties = b.map((v, i) => v === EMPTY ? i : -1).filter(i => i >= 0);
-    return rng.pick(empties);
-  }
-  // hard: minimax
-  let bestScore = -Infinity;
-  let bestMoves = [];
-  const tmp = [...b];
-  for (let i = 0; i < 9; i++) {
-    if (tmp[i] === EMPTY) {
-      tmp[i] = O;
-      const score = minimax(tmp, 0, false, -Infinity, Infinity);
-      tmp[i] = EMPTY;
-      if (score > bestScore) {
-        bestScore = score;
-        bestMoves = [i];
-      } else if (score === bestScore) {
-        bestMoves.push(i);
-      }
-    }
-  }
-  // tie-break randomly (seeded)
-  return bestMoves.length === 1 ? bestMoves[0] : rng.pick(bestMoves);
-}
-
 // ---- game logic ----
 function resolveGame(b) {
   const result = checkWinner(b);
@@ -149,7 +70,7 @@ function resolveGame(b) {
     overlay.open = true;
     return true;
   }
-  if (b.every(v => v !== EMPTY)) {
+  if (isDrawBoard(b)) {
     isDraw.value = true;
     gameOver.value = true;
     if (mode.value === "ai") { tally.draw++; saveTally(); }
@@ -183,7 +104,7 @@ function triggerAI(b) {
   aiThinking.value = true;
   // small delay for feel
   setTimeout(() => {
-    const move = getBestMove(b);
+    const move = getBestMove(b, difficulty.value, rng);
     if (move === undefined || move === null) { aiThinking.value = false; return; }
     const nb = [...b];
     nb[move] = O;

@@ -1,6 +1,17 @@
 <script setup>
 /* 水管連線 Pipes — rotate every tile so all pipes connect from the central source.
-   Spanning-tree generation guarantees a solvable puzzle every time. */
+   Spanning-tree generation guarantees a solvable puzzle every time.
+   Pure logic lives in ~/games/pipes.ts; only Vue/DOM/animation state is here. */
+
+import {
+  N, E, S, W,
+  ALL_DIRS,
+  DR, DC, OPP,
+  rotateCW,
+  generateGrid,
+  computePowered as computePoweredPure,
+  isSolved,
+} from "~/games/pipes";
 
 const accent = "#34c7c0";
 
@@ -9,27 +20,6 @@ const props = defineProps({
   daily: { type: Boolean, default: false },
 });
 const emit = defineEmits(['solved']);
-
-// ---- constants ----
-// Directions bitmask: N=1, E=2, S=4, W=8
-const N = 1, E = 2, S = 4, W = 8;
-const ALL_DIRS = [N, E, S, W];
-
-// dr/dc for each direction
-const DR = { [N]: -1, [E]: 0, [S]: 1, [W]: 0 };
-const DC = { [N]: 0,  [E]: 1, [S]: 0, [W]: -1 };
-// Opposite direction
-const OPP = { [N]: S, [E]: W, [S]: N, [W]: E };
-
-// Rotate a connector set 90° clockwise: N→E, E→S, S→W, W→N
-function rotateCW(mask) {
-  let r = 0;
-  if (mask & N) r |= E;
-  if (mask & E) r |= S;
-  if (mask & S) r |= W;
-  if (mask & W) r |= N;
-  return r;
-}
 
 // ---- difficulty sizes ----
 const SIZES = [5, 7, 9];
@@ -56,114 +46,38 @@ const overlay   = reactive({ open: false });
 // ---- generation ----
 function buildPuzzle(rng) {
   const G = gridSize.value;
-  const srcR = Math.floor(G / 2);
-  const srcC = Math.floor(G / 2);
 
-  // 1. Randomized DFS spanning tree
-  const visited = Array.from({ length: G }, () => new Array(G).fill(false));
-  // solvedMask[r][c]: which directions connect to tree neighbors
-  const solvedMask = Array.from({ length: G }, () => new Array(G).fill(0));
+  const grid = generateGrid(G, rng);
 
-  function dfs(r, c) {
-    visited[r][c] = true;
-    // Build shuffled neighbor list
-    const neighbors = [];
-    for (const d of ALL_DIRS) {
-      const nr = r + DR[d];
-      const nc = c + DC[d];
-      if (nr >= 0 && nr < G && nc >= 0 && nc < G && !visited[nr][nc]) {
-        neighbors.push({ d, nr, nc });
-      }
-    }
-    rng.shuffle(neighbors);
-    for (const { d, nr, nc } of neighbors) {
-      if (!visited[nr][nc]) {
-        // carve edge: r,c → nr,nc
-        solvedMask[r][c] |= d;
-        solvedMask[nr][nc] |= OPP[d];
-        dfs(nr, nc);
-      }
-    }
-  }
+  // initDeg: visual rotation angle starts at 0 for all cells
+  const initDeg = Array.from({ length: G }, () => new Array(G).fill(0));
 
-  dfs(srcR, srcC);
-
-  // 2. Scramble each cell with a random rotation
-  const initMask = Array.from({ length: G }, () => new Array(G).fill(0));
-  const initDeg  = Array.from({ length: G }, () => new Array(G).fill(0));
-
-  for (let r = 0; r < G; r++) {
-    for (let c = 0; c < G; c++) {
-      const rotations = rng.int(0, 3);
-      let m = solvedMask[r][c];
-      for (let i = 0; i < rotations; i++) m = rotateCW(m);
-      initMask[r][c] = m;
-      initDeg[r][c] = 0; // visual angle starts at 0 (already embedded rotation)
-    }
-  }
-
-  // 3. Apply state
-  cells.value     = initMask.map(row => [...row]);
-  solved.value    = solvedMask.map(row => [...row]);
-  startMask.value = initMask.map(row => [...row]);
-  rotDeg.value    = initDeg.map(row => [...row]);
+  // Apply state
+  cells.value     = grid.initial.map(row => [...row]);
+  solved.value    = grid.solved.map(row => [...row]);
+  startMask.value = grid.initial.map(row => [...row]);
+  rotDeg.value    = initDeg;
   moves.value     = 0;
   gameWon.value   = false;
   overlay.open    = false;
 
-  computePowered();
+  refreshPowered();
 }
 
 // ---- powered flood-fill ----
-function computePowered() {
+function refreshPowered() {
   const G = gridSize.value;
   const srcR = Math.floor(G / 2);
   const srcC = Math.floor(G / 2);
-
-  const pw = Array.from({ length: G }, () => new Array(G).fill(false));
-  const queue = [{ r: srcR, c: srcC }];
-  pw[srcR][srcC] = true;
-
-  while (queue.length > 0) {
-    const { r, c } = queue.shift();
-    for (const d of ALL_DIRS) {
-      const nr = r + DR[d];
-      const nc = c + DC[d];
-      if (nr < 0 || nr >= G || nc < 0 || nc >= G) continue;
-      if (pw[nr][nc]) continue;
-      // Linked iff both cells have matching connectors
-      if ((cells.value[r][c] & d) && (cells.value[nr][nc] & OPP[d])) {
-        pw[nr][nc] = true;
-        queue.push({ r: nr, c: nc });
-      }
-    }
-  }
-
-  powered.value = pw;
+  powered.value = computePoweredPure(cells.value, G, srcR, srcC);
 }
 
 // ---- win check ----
 function checkWin() {
   const G = gridSize.value;
-  // Condition A: no unmatched connectors (none point off-grid or at non-matching neighbor)
-  for (let r = 0; r < G; r++) {
-    for (let c = 0; c < G; c++) {
-      const m = cells.value[r][c];
-      for (const d of ALL_DIRS) {
-        if (!(m & d)) continue;
-        const nr = r + DR[d];
-        const nc = c + DC[d];
-        // Points off-grid
-        if (nr < 0 || nr >= G || nc < 0 || nc >= G) return;
-        // Neighbor doesn't have the opposite connector
-        if (!(cells.value[nr][nc] & OPP[d])) return;
-      }
-    }
-  }
-  // Condition B: all cells powered
-  const totalCells = G * G;
-  const poweredCount = powered.value.flat().filter(Boolean).length;
-  if (poweredCount < totalCells) return;
+  const srcR = Math.floor(G / 2);
+  const srcC = Math.floor(G / 2);
+  if (!isSolved(cells.value, G, srcR, srcC)) return;
 
   // Win!
   gameWon.value = true;
@@ -186,7 +100,7 @@ function rotateTile(r, c) {
   // Advance visual angle
   rotDeg.value[r][c] += 90;
   moves.value++;
-  computePowered();
+  refreshPowered();
   checkWin();
 }
 
@@ -207,7 +121,7 @@ function resetPuzzle() {
   moves.value   = 0;
   gameWon.value = false;
   overlay.open  = false;
-  computePowered();
+  refreshPowered();
 }
 
 // ---- new puzzle ----

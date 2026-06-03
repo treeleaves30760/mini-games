@@ -1,6 +1,15 @@
 <script setup>
 /* 打地鼠 Whack-a-Mole — canvas, 3×3 holes, 30s round.
    Mole schedule fully driven by rng. emit('solved') on round end. */
+import {
+  HOLE_COUNT,
+  ROUND_DURATION,
+  buildSchedule as _buildSchedule,
+  calcMoleScore,
+  applyBombPenalty,
+  applyBombTimePenalty,
+  findWhackableEntity,
+} from '~/games/whack';
 
 const props = defineProps({
   seed: { type: [String, Number], default: null },
@@ -11,9 +20,7 @@ const emit = defineEmits(['solved']);
 const accent = '#a0c15a';
 const BEST_KEY = 'playground.whack.best';
 
-const ROUND_DURATION = 30_000; // ms
 const GRID_SIZE = 3;
-const HOLE_COUNT = 9;
 
 // reactive
 const canvasRef = ref(null);
@@ -39,22 +46,6 @@ const FLASH_DURATION = 220; // ms for whack visual
 let holes = []; // {cx, cy, rx, ry}
 let holeR = 0;
 
-function buildSchedule() {
-  const sched = [];
-  // Generate ~40 events in 30 seconds
-  const r2 = makeRng(String(props.seed ?? 'null') + '-sched');
-  let t = 500; // first pop after 0.5s
-  while (t < ROUND_DURATION - 500) {
-    const hole = r2.int(0, HOLE_COUNT - 1);
-    const isBomb = r2.bool(0.15);
-    const dur = r2.int(900, 2200);
-    const gap = r2.int(200, 700);
-    sched.push({ hole, at: t, dur, type: isBomb ? 'bomb' : 'mole' });
-    t += gap;
-  }
-  return sched;
-}
-
 function layoutHoles() {
   const pad = Math.min(W, H) * 0.08;
   const cols = GRID_SIZE, rows = GRID_SIZE;
@@ -77,7 +68,7 @@ function layoutHoles() {
 
 function reset() {
   rng = makeRng(props.seed);
-  schedule = buildSchedule();
+  schedule = _buildSchedule(props.seed);
   activeEntities = [];
   score.value = 0;
   timeLeft.value = 30;
@@ -360,20 +351,19 @@ function onCanvasClick(e) {
   const holeIdx = hitTest(x, y);
   if (holeIdx === -1) return;
 
-  const entity = activeEntities.find(e2 => e2.hole === holeIdx && !e2.whacked);
+  const entity = findWhackableEntity(holeIdx, activeEntities, elapsed);
   if (!entity) return;
 
   entity.whacked = true;
   entity.whackTime = elapsed;
 
   if (entity.type === 'mole') {
-    const timeBonus = Math.max(0, Math.floor((ROUND_DURATION - elapsed) / 3000));
-    score.value += 10 + timeBonus;
+    score.value += calcMoleScore(elapsed);
   } else {
     // bomb penalty
-    score.value = Math.max(0, score.value - 15);
-    timeLeft.value = Math.max(0, timeLeft.value - 3);
-    elapsed = Math.min(ROUND_DURATION, elapsed + 3000);
+    score.value = applyBombPenalty(score.value);
+    elapsed = applyBombTimePenalty(elapsed);
+    timeLeft.value = Math.max(0, Math.ceil((ROUND_DURATION - elapsed) / 1000));
   }
 }
 
@@ -382,11 +372,15 @@ function onHoleKey(i, e) {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     if (!started || over || paused.value) return;
-    const entity = activeEntities.find(ent => ent.hole === i && !ent.whacked);
+    const entity = findWhackableEntity(i, activeEntities, elapsed);
     if (!entity) return;
     entity.whacked = true;
-    if (entity.type === 'mole') score.value += 10;
-    else score.value = Math.max(0, score.value - 15);
+    if (entity.type === 'mole') score.value += calcMoleScore(elapsed);
+    else {
+      score.value = applyBombPenalty(score.value);
+      elapsed = applyBombTimePenalty(elapsed);
+      timeLeft.value = Math.max(0, Math.ceil((ROUND_DURATION - elapsed) / 1000));
+    }
   }
 }
 

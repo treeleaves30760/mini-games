@@ -5,6 +5,13 @@
    removed. Given cells are locked; clicking empty cells cycles empty→0→1→empty.
    Live-validation highlights violated cells in red. */
 
+import {
+  generatePuzzle,
+  validateAll,
+  hasTriple,
+  checkWinCondition,
+} from "~/games/binario";
+
 const accent = "#7ed957";
 
 const props = defineProps({
@@ -31,106 +38,14 @@ const bestTime = ref(null);
 const overlay = reactive({ open: false, title: "", sub: "" });
 let timerInterval = null;
 
-let rng = makeRng(props.seed);
-
-// ---- solver / generator ----
-function generateSolution(size) {
-  const grid = new Array(size * size).fill(-1);
-
-  function rowOk(g, r, c, v) {
-    const base = r * size;
-    // no three consecutive
-    if (c >= 2 && g[base + c - 1] === v && g[base + c - 2] === v) return false;
-    if (c >= 1 && c + 1 < size && g[base + c - 1] === v && g[base + c + 1] === v) return false;
-    if (c + 2 < size && g[base + c + 1] === v && g[base + c + 2] === v) return false;
-    // count constraint
-    const halfSize = size / 2;
-    const count = g.slice(base, base + size).filter(x => x === v).length;
-    if (count >= halfSize) return false;
-    return true;
-  }
-
-  function colOk(g, r, c, v) {
-    const halfSize = size / 2;
-    // no three consecutive
-    if (r >= 2 && g[(r - 1) * size + c] === v && g[(r - 2) * size + c] === v) return false;
-    if (r >= 1 && r + 1 < size && g[(r - 1) * size + c] === v && g[(r + 1) * size + c] === v) return false;
-    if (r + 2 < size && g[(r + 1) * size + c] === v && g[(r + 2) * size + c] === v) return false;
-    // count
-    let count = 0;
-    for (let i = 0; i < size; i++) if (g[i * size + c] === v) count++;
-    if (count >= halfSize) return false;
-    return true;
-  }
-
-  function rowsUnique(g, r) {
-    const row = g.slice(r * size, r * size + size);
-    if (row.includes(-1)) return true;
-    for (let pr = 0; pr < r; pr++) {
-      const prev = g.slice(pr * size, pr * size + size);
-      if (prev.every((v, i) => v === row[i])) return false;
-    }
-    return true;
-  }
-
-  function colsUnique(g, c, r) {
-    // only check if column is full up to r
-    const col = [];
-    for (let i = 0; i <= r; i++) col.push(g[i * size + c]);
-    if (r < size - 1) return true;
-    if (col.includes(-1)) return true;
-    for (let pc = 0; pc < c; pc++) {
-      const prev = [];
-      for (let i = 0; i < size; i++) prev.push(g[i * size + pc]);
-      if (prev.every((v, i) => v === col[i])) return false;
-    }
-    return true;
-  }
-
-  function bt(idx) {
-    if (idx === size * size) return true;
-    const r = (idx / size) | 0;
-    const c = idx % size;
-    const order = rng.bool() ? [0, 1] : [1, 0];
-    for (const v of order) {
-      if (!rowOk(grid, r, c, v)) continue;
-      if (!colOk(grid, r, c, v)) continue;
-      grid[idx] = v;
-      if (!rowsUnique(grid, r)) { grid[idx] = -1; continue; }
-      if (!colsUnique(grid, c, r)) { grid[idx] = -1; continue; }
-      if (bt(idx + 1)) return true;
-      grid[idx] = -1;
-    }
-    return false;
-  }
-
-  bt(0);
-  return grid;
-}
-
-function removeCells(sol, size) {
-  // keep ~50% as givens, remove the other ~50% while maintaining unique solvability
-  // For simplicity we remove up to 50% using rng ordering — ensures puzzle is solvable
-  // since we keep sufficient constraints
-  const indices = Array.from({ length: size * size }, (_, i) => i);
-  rng.shuffle(indices);
-  const toRemove = Math.floor(size * size * 0.5);
-  const giv = new Array(size * size).fill(true);
-  for (let i = 0; i < toRemove; i++) {
-    giv[indices[i]] = false;
-  }
-  return giv;
-}
-
 function generate() {
   clearInterval(timerInterval);
-  rng = makeRng(props.seed);
+  const rng = makeRng(props.seed);
   const size = gridSize.value;
-  const sol = generateSolution(size);
-  solution.value = sol;
-  const giv = removeCells(sol, size);
-  given.value = giv;
-  cells.value = sol.map((v, i) => giv[i] ? v : null);
+  const puzzle = generatePuzzle(size, rng);
+  solution.value = puzzle.solution;
+  given.value = puzzle.given;
+  cells.value = puzzle.cells;
   won.value = false;
   overlay.open = false;
   elapsed.value = 0;
@@ -157,9 +72,7 @@ function tapCell(i) {
 // ---- win check ----
 function checkWin() {
   const arr = cells.value;
-  if (arr.includes(null)) return;
-  // validate all rules
-  if (!validateAll(arr, gridSize.value)) return;
+  if (!checkWinCondition(arr, gridSize.value)) return;
   won.value = true;
   clearInterval(timerInterval);
   const t = elapsed.value;
@@ -176,31 +89,6 @@ function checkWin() {
     overlay.sub = `完成！耗時 ${formatTime(t)}。`;
   }
   overlay.open = true;
-}
-
-function validateAll(arr, size) {
-  for (let r = 0; r < size; r++) {
-    const row = arr.slice(r * size, r * size + size);
-    if (!validateLine(row)) return false;
-  }
-  for (let c = 0; c < size; c++) {
-    const col = [];
-    for (let r = 0; r < size; r++) col.push(arr[r * size + c]);
-    if (!validateLine(col)) return false;
-  }
-  return true;
-}
-
-function validateLine(line) {
-  if (line.includes(null)) return false;
-  const half = line.length / 2;
-  const zeros = line.filter(v => v === 0).length;
-  const ones = line.filter(v => v === 1).length;
-  if (zeros !== half || ones !== half) return false;
-  for (let i = 0; i + 2 < line.length; i++) {
-    if (line[i] !== null && line[i] === line[i + 1] && line[i] === line[i + 2]) return false;
-  }
-  return true;
 }
 
 // ---- live violation highlighting ----
@@ -235,17 +123,6 @@ function violatesCell(idx) {
   }
 
   return false;
-}
-
-function hasTriple(line, pos) {
-  const v = line[pos];
-  if (v === null) return false;
-  let streak = 1;
-  let l = pos - 1;
-  while (l >= 0 && line[l] === v) { streak++; l--; }
-  let ri = pos + 1;
-  while (ri < line.length && line[ri] === v) { streak++; ri++; }
-  return streak >= 3;
 }
 
 // ---- helpers ----

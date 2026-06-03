@@ -3,6 +3,16 @@
    Rules: every white cell lit; no two bulbs see each other; numbered walls have
    exactly that many adjacent bulbs. Seeded RNG guarantees a solvable board. */
 
+import {
+  buildBoard,
+  computeLighting,
+  checkWin as akariCheckWin,
+  wallAdjBulbCount,
+  cellIdx,
+  cellRc,
+  inBounds as akariInBounds,
+} from "~/games/akari";
+
 const accent = "#ffc24b";
 
 const props = defineProps({
@@ -34,117 +44,18 @@ const conflictSet = ref(new Set());
 const totalWhite  = ref(0);
 const litWhite    = ref(0);
 
-// ---- index helpers ----
-function idx(r, c) { return r * gridSize.value + c; }
-function rc(i) {
-  const S = gridSize.value;
-  return [Math.floor(i / S), i % S];
-}
-function inBounds(r, c) {
-  const S = gridSize.value;
-  return r >= 0 && r < S && c >= 0 && c < S;
-}
-
-// ---- board generator ----
-function buildBoard(rng, size) {
-  const S = size;
-  const total = S * S;
-
-  // Step 1: place walls (~17% of cells)
-  const wallFraction = 0.17;
-  const board = Array.from({ length: total }, () => ({
-    wall: false, num: null, bulb: false,
-  }));
-  for (let i = 0; i < total; i++) {
-    if (rng.bool(wallFraction)) board[i].wall = true;
-  }
-
-  // Step 2: greedy cover — place bulbs on uncovered white cells
-  // covered[i] = true when cell i is lit by some bulb
-  const covered = new Array(total).fill(false);
-  const solutionBulbs = new Set();
-
-  // Mark the rays from a given position as covered (not the bulb cell itself)
-  function rayIndices(r, c) {
-    const rays = [];
-    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-    for (const [dr, dc] of dirs) {
-      let nr = r + dr, nc = c + dc;
-      while (inBounds(nr, nc)) {
-        const ni = idx(nr, nc);
-        if (board[ni].wall) break;
-        rays.push(ni);
-        nr += dr;
-        nc += dc;
-      }
-    }
-    return rays;
-  }
-
-  // Scan in order; for any uncovered white cell, place a bulb there.
-  // Because we only place on uncovered cells, no bulb will be within the
-  // ray of an already-placed bulb, so mutual-visibility is automatically safe.
-  for (let i = 0; i < total; i++) {
-    if (board[i].wall) continue;
-    if (covered[i]) continue;
-    // Place bulb here
-    solutionBulbs.add(i);
-    covered[i] = true;
-    const [r, c] = rc(i);
-    for (const ni of rayIndices(r, c)) {
-      covered[ni] = true;
-    }
-  }
-
-  // Step 3: compute each wall's adjacent bulb count; reveal ~75% of them
-  const DIRS4 = [[-1,0],[1,0],[0,-1],[0,1]];
-  for (let i = 0; i < total; i++) {
-    if (!board[i].wall) continue;
-    const [r, c] = rc(i);
-    let adjBulbs = 0;
-    for (const [dr, dc] of DIRS4) {
-      const ni = idx(r + dr, c + dc);
-      if (inBounds(r + dr, c + dc) && solutionBulbs.has(ni)) adjBulbs++;
-    }
-    // Reveal number on ~75% of walls
-    if (rng.bool(0.75)) board[i].num = adjBulbs;
-  }
-
-  return board;
-}
+// ---- index helpers (local thin wrappers that capture gridSize) ----
+function idx(r, c) { return cellIdx(r, c, gridSize.value); }
+function rc(i) { return cellRc(i, gridSize.value); }
+function inBounds(r, c) { return akariInBounds(r, c, gridSize.value); }
 
 // ---- compute lighting ----
 function recomputeLighting() {
   const S = gridSize.value;
   const board = cells.value;
   const total = S * S;
-  const newLit = new Set();
-  const newConflict = new Set();
 
-  const DIRS4 = [[-1,0],[1,0],[0,-1],[0,1]];
-
-  // For each bulb, cast rays; if ray hits another bulb → conflict
-  for (let i = 0; i < total; i++) {
-    if (board[i].wall || !board[i].bulb) continue;
-    newLit.add(i);
-    const [r, c] = rc(i);
-    for (const [dr, dc] of DIRS4) {
-      let nr = r + dr, nc = c + dc;
-      while (inBounds(nr, nc)) {
-        const ni = idx(nr, nc);
-        if (board[ni].wall) break;
-        if (board[ni].bulb) {
-          // mutual conflict
-          newConflict.add(i);
-          newConflict.add(ni);
-          break;
-        }
-        newLit.add(ni);
-        nr += dr;
-        nc += dc;
-      }
-    }
-  }
+  const { litSet: newLit, conflictSet: newConflict } = computeLighting(board, S);
 
   litSet.value = newLit;
   conflictSet.value = newConflict;
@@ -166,27 +77,10 @@ function recomputeLighting() {
 function checkWin() {
   if (gameWon.value) return;
   const board = cells.value;
-  const total = gridSize.value * gridSize.value;
+  const S = gridSize.value;
+  const lighting = { litSet: litSet.value, conflictSet: conflictSet.value };
 
-  // 1. All white cells lit
-  if (litWhite.value !== totalWhite.value) return;
-
-  // 2. No conflicts
-  if (conflictSet.value.size > 0) return;
-
-  // 3. Every numbered wall satisfied
-  const DIRS4 = [[-1,0],[1,0],[0,-1],[0,1]];
-  for (let i = 0; i < total; i++) {
-    const cell = board[i];
-    if (!cell.wall || cell.num === null) continue;
-    const [r, c] = rc(i);
-    let adjBulbs = 0;
-    for (const [dr, dc] of DIRS4) {
-      const nr = r + dr, nc = c + dc;
-      if (inBounds(nr, nc) && !board[idx(nr, nc)].wall && board[idx(nr, nc)].bulb) adjBulbs++;
-    }
-    if (adjBulbs !== cell.num) return;
-  }
+  if (!akariCheckWin(board, S, lighting)) return;
 
   // Won!
   gameWon.value = true;
@@ -205,15 +99,7 @@ function onCellPointerDown(e, i) {
 
 // ---- numbered wall helpers ----
 function wallAdjBulbs(i) {
-  const board = cells.value;
-  const [r, c] = rc(i);
-  const DIRS4 = [[-1,0],[1,0],[0,-1],[0,1]];
-  let count = 0;
-  for (const [dr, dc] of DIRS4) {
-    const nr = r + dr, nc = c + dc;
-    if (inBounds(nr, nc) && !board[idx(nr, nc)].wall && board[idx(nr, nc)].bulb) count++;
-  }
-  return count;
+  return wallAdjBulbCount(i, cells.value, gridSize.value);
 }
 
 // ---- cell class helper ----

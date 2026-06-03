@@ -19,6 +19,9 @@ const props = defineProps({
 });
 const emit = defineEmits(["solved"]);
 
+// ---- pure game logic (unit-tested in app/games/fifteen.ts) ----
+import { isSolved as isBoardSolved, blankPos, legalMoves, applyMove, generateBoard } from "~/games/fifteen";
+
 const sizeKey = ref("4");
 const tiles = ref([]); // flat array, blank is 0
 const blankIdx = ref(0);
@@ -40,67 +43,11 @@ const N = computed(() => {
 });
 const total = computed(() => N.value * N.value);
 
-// ---- helpers ----
-function solved(arr) {
-  for (let i = 0; i < arr.length - 1; i++) {
-    if (arr[i] !== i + 1) return false;
-  }
-  return arr[arr.length - 1] === 0;
-}
-
-function blankPos(arr, n) {
-  const i = arr.indexOf(0);
-  return { r: (i / n) | 0, c: i % n };
-}
-
-function legalMoves(arr, n) {
-  const { r, c } = blankPos(arr, n);
-  const moves = [];
-  // A "move" means the blank moves in direction d, i.e. a tile from that neighbour slides into blank
-  if (r > 0) moves.push("up");
-  if (r < n - 1) moves.push("down");
-  if (c > 0) moves.push("left");
-  if (c < n - 1) moves.push("right");
-  return moves;
-}
-
-function applyMove(arr, dir, n) {
-  const next = arr.slice();
-  const bi = next.indexOf(0);
-  const r = (bi / n) | 0;
-  const c = bi % n;
-  let ti;
-  if (dir === "up") ti = (r - 1) * n + c;
-  else if (dir === "down") ti = (r + 1) * n + c;
-  else if (dir === "left") ti = r * n + (c - 1);
-  else ti = r * n + (c + 1);
-  next[bi] = next[ti];
-  next[ti] = 0;
-  return next;
-}
-
-function scramble(n, rng) {
-  let arr = [];
-  for (let i = 1; i < n * n; i++) arr.push(i);
-  arr.push(0);
-  const steps = Math.max(120, n * n * 30);
-  let last = null;
-  const OPP = { up: "down", down: "up", left: "right", right: "left" };
-  for (let i = 0; i < steps; i++) {
-    let moves = legalMoves(arr, n).filter((m) => m !== OPP[last]);
-    if (!moves.length) moves = legalMoves(arr, n);
-    const m = rng.pick(moves);
-    arr = applyMove(arr, m, n);
-    last = m;
-  }
-  return arr;
-}
-
 function newGame(sk) {
   if (sk && !props.daily) sizeKey.value = sk;
   const n = N.value;
   const rng = makeRng(props.seed);
-  tiles.value = scramble(n, rng);
+  tiles.value = generateBoard(n, rng);
   blankIdx.value = tiles.value.indexOf(0);
   moves.value = 0;
   seconds.value = 0;
@@ -202,7 +149,7 @@ function tileClick(idx) {
 }
 
 function checkWin() {
-  if (solved(tiles.value)) {
+  if (isBoardSolved(tiles.value)) {
     won.value = true;
     stopTimer();
     saveBest();

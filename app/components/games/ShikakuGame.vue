@@ -6,6 +6,14 @@
    valid tiling is guaranteed to exist (and is kept around for the hint button).
    Drag to draw a rectangle; tap a drawn rectangle to remove it. */
 
+import {
+  rectIsValid,
+  intersects as _intersects,
+  containsCell,
+  generateShikaku,
+  isSolved,
+} from "~/games/shikaku";
+
 const accent = "#34d399";
 const BAD = "#ff5d6c";
 const BEST_KEY = "playground.shikaku.best.";
@@ -38,21 +46,8 @@ let startCell = null;
 const diffLabel = computed(() => DIFFS.find((d) => d.key === difficulty.value)?.label || "");
 
 // ---------- geometry ----------
-function areaOf(R) {
-  return (R.r1 - R.r0 + 1) * (R.c1 - R.c0 + 1);
-}
-function cluesIn(R) {
-  return clues.value.filter((k) => k.r >= R.r0 && k.r <= R.r1 && k.c >= R.c0 && k.c <= R.c1);
-}
 function rectState(R) {
-  const cs = cluesIn(R);
-  return cs.length === 1 && areaOf(R) === cs[0].value ? "valid" : "invalid";
-}
-function intersects(A, B) {
-  return !(A.c1 < B.c0 || A.c0 > B.c1 || A.r1 < B.r0 || A.r0 > B.r1);
-}
-function contains(R, r, c) {
-  return r >= R.r0 && r <= R.r1 && c >= R.c0 && c <= R.c1;
+  return rectIsValid(R, clues.value) ? "valid" : "invalid";
 }
 function boxStyle(R) {
   return {
@@ -78,65 +73,12 @@ const pendingView = computed(() =>
 const solvedCount = computed(() => rects.value.filter((R) => rectState(R) === "valid").length);
 
 // ---------- generation ----------
-function genShikaku(R, C, maxArea) {
-  const leaves = [];
-  const rnd = (n) => (Math.random() * n) | 0;
-  // chance a piece (already within the size cap) stops as a leaf rather than
-  // splitting again. High for small pieces so 2-cell dominoes rarely shatter
-  // into 1×1s; eased down for cap-sized pieces so they sometimes break up and
-  // feed the mid-range — yielding chunky, screenshot-like rectangles (≈4-7% 1s).
-  function pStop(area) {
-    if (area > maxArea) return 0;
-    if (area <= 1) return 1;
-    return Math.min(0.94, Math.max(0.66, 0.96 - (0.3 * (area - 2)) / (maxArea - 2)));
-  }
-  // centre-biased cut (mean of two uniform draws) → balanced pieces, few slivers
-  const cutAt = (len) => 1 + Math.floor((rnd(len - 1) + rnd(len - 1)) / 2);
-  function split(r0, c0, r1, c1) {
-    const h = r1 - r0 + 1;
-    const w = c1 - c0 + 1;
-    const area = h * w;
-    if ((h === 1 && w === 1) || (area <= maxArea && Math.random() < pStop(area))) {
-      leaves.push({ r0, c0, r1, c1 });
-      return;
-    }
-    let horiz;
-    if (h === 1) horiz = false;
-    else if (w === 1) horiz = true;
-    else if (h > w) horiz = Math.random() < 0.72; // prefer cutting the longer side
-    else if (w > h) horiz = Math.random() < 0.28;
-    else horiz = Math.random() < 0.5;
-    if (horiz) {
-      const k = cutAt(h);
-      split(r0, c0, r0 + k - 1, c1);
-      split(r0 + k, c0, r1, c1);
-    } else {
-      const k = cutAt(w);
-      split(r0, c0, r1, c0 + k - 1);
-      split(r0, c0 + k, r1, c1);
-    }
-  }
-  split(0, 0, R - 1, C - 1);
-
-  const cl = [];
-  const sol = new Map();
-  let id = 1;
-  for (const lf of leaves) {
-    const cid = id++;
-    const cr = lf.r0 + rnd(lf.r1 - lf.r0 + 1);
-    const cc = lf.c0 + rnd(lf.c1 - lf.c0 + 1);
-    cl.push({ id: cid, r: cr, c: cc, value: areaOf(lf) });
-    sol.set(cid, lf);
-  }
-  return { clues: cl, solution: sol };
-}
-
 function newGame(diffKey) {
   if (diffKey) difficulty.value = diffKey;
   const d = DIFFS.find((x) => x.key === difficulty.value);
   rows.value = d.rows;
   cols.value = d.cols;
-  const g = genShikaku(d.rows, d.cols, d.maxArea);
+  const g = generateShikaku(d.rows, d.cols, d.maxArea, makeRng());
   clues.value = g.clues;
   solution = g.solution;
   rects.value = [];
@@ -187,14 +129,14 @@ function onUp() {
   if (!p) return;
   // a tap (no drag) on an existing rectangle removes it
   if (p.r0 === p.r1 && p.c0 === p.c1) {
-    const hit = rects.value.find((R) => contains(R, p.r0, p.c0));
+    const hit = rects.value.find((R) => containsCell(R, p.r0, p.c0));
     if (hit) {
       rects.value = rects.value.filter((R) => R.id !== hit.id);
       return;
     }
   }
   // otherwise draw the box, replacing anything it overlaps
-  rects.value = rects.value.filter((R) => !intersects(R, p));
+  rects.value = rects.value.filter((R) => !_intersects(R, p));
   rects.value.push({ id: nextId++, r0: p.r0, c0: p.c0, r1: p.r1, c1: p.c1 });
   checkWin();
 }
@@ -218,20 +160,14 @@ function hint() {
   });
   if (!unsolved.length) return;
   const s = solution.get(unsolved[(Math.random() * unsolved.length) | 0].id);
-  rects.value = rects.value.filter((R) => !intersects(R, s));
+  rects.value = rects.value.filter((R) => !_intersects(R, s));
   rects.value.push({ id: nextId++, r0: s.r0, c0: s.c0, r1: s.r1, c1: s.c1 });
   checkWin();
 }
 
 // ---------- win / timer ----------
 function checkWin() {
-  const total = rows.value * cols.value;
-  let covered = 0;
-  for (const R of rects.value) {
-    if (rectState(R) !== "valid") return;
-    covered += areaOf(R);
-  }
-  if (covered === total && rects.value.length === clues.value.length) win();
+  if (isSolved(rects.value, clues.value, rows.value, cols.value)) win();
 }
 function win() {
   if (won.value) return;

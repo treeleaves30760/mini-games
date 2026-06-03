@@ -3,6 +3,15 @@
    Click an undrawn edge to draw it; completing a box claims it + extra turn.
    AI: complete boxes first, else safe edge, else give away smallest chain. */
 
+// ---- pure game logic (unit-tested in app/games/dots-boxes.ts) ----
+import {
+  hIdx,
+  vIdx,
+  applyMove,
+  aiMove,
+  scoreOf,
+} from "~/games/dots-boxes";
+
 const accent = "#ff8fa3";
 const SAVE_KEY = "playground.dotsboxes.stats";
 
@@ -14,108 +23,20 @@ const emit = defineEmits(["solved"]);
 
 // Grid: DOTS = 5×5, BOXES = 4×4
 // Edges: horizontal (5 rows × 4 cols = 20) + vertical (4 rows × 5 cols = 20) = 40 total
-// H-edge(r,c): row r between dots (r,c)-(r,c+1)   index: r*4+c
-// V-edge(r,c): col c between dots (r,c)-(r+1,c)   index: 20 + r*5+c
-
 const TOTAL_EDGES = 40;
 const TOTAL_BOXES = 16;
 
 const rng = makeRng(props.seed);
 
 // ---- state ----
-const edges    = ref(new Set());       // drawn edge indices
-const owners   = ref(new Array(16).fill(0));  // 0=none 1=player 2=ai
-const turn     = ref(1);               // 1=player 2=ai
+const edges    = ref(new Set());                      // drawn edge indices
+const owners   = ref(new Array(16).fill(0));          // 0=none 1=player 2=ai
+const turn     = ref(1);                              // 1=player 2=ai
 const hovered  = ref(-1);
 const animBox  = ref(-1);
 const gameOver = ref(false);
 const overlay  = reactive({ open: false, title: "", sub: "" });
 const stats    = reactive({ wins: 0, losses: 0, draws: 0 });
-
-// ---- edge helpers ----
-function hIdx(r, c) { return r * 4 + c; }
-function vIdx(r, c) { return 20 + r * 5 + c; }
-
-// Which edges bound box (br, bc)?
-function boxEdges(br, bc) {
-  return [
-    hIdx(br, bc),     // top
-    hIdx(br+1, bc),   // bottom
-    vIdx(br, bc),     // left
-    vIdx(br, bc+1),   // right
-  ];
-}
-
-function boxCount(ei, ownArr, edgeSet) {
-  // Count edges drawn for each box adjacent to edge ei
-  const adj = [];
-  // Is it a H-edge?
-  if (ei < 20) {
-    const r = Math.floor(ei / 4), c = ei % 4;
-    if (r > 0) adj.push((r-1)*4+c);
-    if (r < 4) adj.push(r*4+c);
-  } else {
-    const vi = ei - 20;
-    const r = Math.floor(vi / 5), c = vi % 5;
-    if (c > 0) adj.push(r*4+(c-1));
-    if (c < 4) adj.push(r*4+c);
-  }
-  return adj;
-}
-
-function edgesOfBox(bi) {
-  const br = Math.floor(bi / 4), bc = bi % 4;
-  return boxEdges(br, bc);
-}
-
-function countDrawn(bi, edgeSet) {
-  return edgesOfBox(bi).filter(e => edgeSet.has(e)).length;
-}
-
-// Claim any newly-completed boxes, return count claimed
-function claimBoxes(newEdgeSet, newOwners, player) {
-  let claimed = 0;
-  for (let bi = 0; bi < 16; bi++) {
-    if (newOwners[bi] === 0 && countDrawn(bi, newEdgeSet) === 4) {
-      newOwners[bi] = player;
-      claimed++;
-    }
-  }
-  return claimed;
-}
-
-// ---- AI logic ----
-function aiTurn(edgeSet, ownersArr) {
-  const available = [];
-  for (let i = 0; i < TOTAL_EDGES; i++) {
-    if (!edgeSet.has(i)) available.push(i);
-  }
-  if (!available.length) return -1;
-
-  // 1) Complete any box
-  for (const e of available) {
-    const adjBoxes = boxCount(e, ownersArr, edgeSet);
-    for (const bi of adjBoxes) {
-      if (ownersArr[bi] === 0 && countDrawn(bi, edgeSet) === 3) return e;
-    }
-  }
-
-  // 2) Safe edge: doesn't give opponent a 3-sided box
-  const safe = available.filter(e => {
-    const adj = boxCount(e, ownersArr, edgeSet);
-    return !adj.some(bi => ownersArr[bi] === 0 && countDrawn(bi, edgeSet) === 2);
-  });
-  if (safe.length) return safe[rng.int(0, safe.length - 1)];
-
-  // 3) Give away smallest chain — just pick one that creates fewest 3-sided boxes
-  let best = available[0], bestCost = Infinity;
-  for (const e of available) {
-    const adj = boxCount(e, ownersArr, edgeSet);
-    const cost = adj.filter(bi => ownersArr[bi] === 0 && countDrawn(bi, edgeSet) === 2).length;
-    if (cost < bestCost) { bestCost = cost; best = e; }
-  }
-  return best;
-}
 
 // ---- place edge ----
 let aiTimer = null;
@@ -128,29 +49,25 @@ async function placeEdge(ei) {
 }
 
 function doPlace(ei, player) {
-  const newEdges = new Set(edges.value);
-  newEdges.add(ei);
-  const newOwners = [...owners.value];
-  const claimed = claimBoxes(newEdges, newOwners, player);
+  const result = applyMove(ei, player, edges.value, owners.value);
 
-  edges.value = newEdges;
-  owners.value = newOwners;
+  edges.value = result.edges;
+  owners.value = result.owners;
 
-  if (claimed > 0) {
-    // Animate last claimed (approximate)
-    for (let bi = 0; bi < 16; bi++) {
-      if (newOwners[bi] === player && owners.value[bi] === player) animBox.value = bi;
+  if (result.claimed > 0) {
+    // Animate last claimed box (find it by scanning newly owned boxes)
+    for (let bi = 0; bi < TOTAL_BOXES; bi++) {
+      if (result.owners[bi] === player) animBox.value = bi;
     }
     setTimeout(() => { animBox.value = -1; }, 350);
   }
 
-  const totalDrawn = newEdges.size;
-  if (totalDrawn === TOTAL_EDGES) {
-    endGame(newOwners);
+  if (result.gameOver) {
+    endGame(result.owners);
     return;
   }
 
-  if (claimed > 0) {
+  if (result.keepTurn) {
     // Same player goes again
     if (player === 2) scheduleAI();
     // else wait for player click
@@ -169,15 +86,15 @@ function scheduleAI() {
   clearTimeout(aiTimer);
   aiTimer = setTimeout(() => {
     if (gameOver.value) return;
-    const m = aiTurn(edges.value, owners.value);
+    const m = aiMove(edges.value, owners.value, undefined, undefined, rng);
     if (m >= 0) doPlace(m, 2);
   }, 420);
 }
 
 function endGame(ownersArr) {
   gameOver.value = true;
-  const playerScore = ownersArr.filter(o => o === 1).length;
-  const aiScore     = ownersArr.filter(o => o === 2).length;
+  const playerScore = scoreOf(ownersArr, 1);
+  const aiScore     = scoreOf(ownersArr, 2);
   if (playerScore > aiScore) {
     emit("solved", { playerScore, aiScore });
     stats.wins++;
@@ -222,8 +139,8 @@ watch(() => props.seed, restart);
 onBeforeUnmount(() => clearTimeout(aiTimer));
 
 // ---- computed scores ----
-const playerScore = computed(() => owners.value.filter(o => o === 1).length);
-const aiScore     = computed(() => owners.value.filter(o => o === 2).length);
+const playerScore = computed(() => scoreOf(owners.value, 1));
+const aiScore     = computed(() => scoreOf(owners.value, 2));
 
 // ---- SVG layout ----
 // Dots at positions (c*80+40, r*80+40) in a 440×440 viewBox

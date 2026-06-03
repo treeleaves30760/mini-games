@@ -4,10 +4,23 @@
    attacks and defends, blocks 4s and open-3s.
    Win = 5+ in a row; winning stones highlighted. Undo (悔棋) + restart. */
 
+// ---- pure game logic (unit-tested in app/games/gomoku.ts) ----
+import {
+  SIZE,
+  EMPTY,
+  BLACK,
+  WHITE,
+  makeBoard,
+  isBoardFull,
+  findWin,
+  analyzeBlack,
+  computeForbiddenPoints,
+  getCandidates,
+  getAIMove,
+} from "~/games/gomoku";
+
 const accent = "#d89b6a";
 const SAVE_KEY = "playground.gomoku";
-const SIZE = 15;
-const EMPTY = 0, BLACK = 1, WHITE = 2; // BLACK = player
 
 const props = defineProps({
   seed: { type: [String, Number], default: null },
@@ -41,240 +54,6 @@ watch(() => props.seed, () => {
   rng = makeRng(props.seed);
   resetGame();
 });
-
-function makeBoard() {
-  return Array.from({ length: SIZE }, () => Array(SIZE).fill(EMPTY));
-}
-
-// ---- win detection ----
-const DIRS4 = [[0,1],[1,0],[1,1],[1,-1]];
-
-function countDir(b, r, c, dr, dc, color) {
-  let count = 0;
-  let rr = r + dr, cc = c + dc;
-  while (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE && b[rr][cc] === color) {
-    count++; rr += dr; cc += dc;
-  }
-  return count;
-}
-
-function findWin(b) {
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      const v = b[r][c];
-      if (v === EMPTY) continue;
-      for (const [dr, dc] of DIRS4) {
-        const fwd = 1 + countDir(b, r, c, dr, dc, v);
-        const bwd = countDir(b, r, c, -dr, -dc, v);
-        const total = fwd + bwd;
-        if (total >= 5) {
-          const cells = [];
-          let rr = r - bwd * dr, cc = c - bwd * dc;
-          for (let k = 0; k < total; k++) {
-            cells.push({ r: rr, c: cc });
-            rr += dr; cc += dc;
-          }
-          return { winner: v, cells };
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function isBoardFull(b) {
-  return b.every(row => row.every(v => v !== EMPTY));
-}
-
-// ---- Renju forbidden moves (禁手) — BLACK only ----
-// A black move is forbidden when it forms a double-three (三三), a double-four
-// (四四) or an overline of six+ (長連). Making exactly five always wins and
-// overrides any forbidden shape. White (the AI) has no restrictions.
-
-// One direction through (r,c) as a small array: 1=black, 0=empty, -1=block/edge.
-function dirLine(b, r, c, dr, dc, radius) {
-  const arr = [];
-  for (let i = -radius; i <= radius; i++) {
-    const rr = r + dr * i, cc = c + dc * i;
-    if (rr < 0 || rr >= SIZE || cc < 0 || cc >= SIZE) arr.push(-1);
-    else if (b[rr][cc] === BLACK) arr.push(1);
-    else if (b[rr][cc] === EMPTY) arr.push(0);
-    else arr.push(-1);
-  }
-  return arr;
-}
-
-// Length of the contiguous black run passing through index ci.
-function maxRun(arr, ci) {
-  let len = 1;
-  for (let i = ci - 1; i >= 0 && arr[i] === 1; i--) len++;
-  for (let i = ci + 1; i < arr.length && arr[i] === 1; i++) len++;
-  return len;
-}
-
-// A "four": some empty cell, once filled, completes a run of EXACTLY five through
-// ci. Requiring exactly five rejects overline traps (e.g. BBB_BBB) that only
-// complete to six, which are not real four threats under Renju rules.
-function makesFour(arr, ci) {
-  for (let e = 0; e < arr.length; e++) {
-    if (arr[e] !== 0) continue;
-    arr[e] = 1;
-    const run = maxRun(arr, ci);
-    arr[e] = 0;
-    if (run === 5) return true;
-  }
-  return false;
-}
-
-// A straight/open four (".1111.") that includes ci among the four stones.
-function hasStraightFour(arr, ci) {
-  for (let s = 0; s + 5 < arr.length; s++) {
-    if (arr[s] === 0 && arr[s + 1] === 1 && arr[s + 2] === 1 &&
-        arr[s + 3] === 1 && arr[s + 4] === 1 && arr[s + 5] === 0 &&
-        ci >= s + 1 && ci <= s + 4) return true;
-  }
-  return false;
-}
-
-// An open three: some empty cell, once filled, turns this line into an open four.
-function makesOpenThree(arr, ci) {
-  for (let e = 0; e < arr.length; e++) {
-    if (arr[e] !== 0) continue;
-    arr[e] = 1;
-    const ok = hasStraightFour(arr, ci);
-    arr[e] = 0;
-    if (ok) return true;
-  }
-  return false;
-}
-
-// Classify the strongest threat the black stone at (r,c) makes in one direction.
-function classifyDir(b, r, c, dr, dc) {
-  const arr = dirLine(b, r, c, dr, dc, 5);
-  const ci = 5;
-  const run = maxRun(arr, ci);
-  if (run >= 6) return "overline";
-  if (run === 5) return "five";
-  if (makesFour(arr, ci)) return "four";
-  if (makesOpenThree(arr, ci)) return "three";
-  return "none";
-}
-
-// Verdict for a black stone already placed at (r,c) on grid b.
-function analyzeBlack(b, r, c) {
-  let five = 0, overline = 0, four = 0, three = 0;
-  for (const [dr, dc] of DIRS4) {
-    const k = classifyDir(b, r, c, dr, dc);
-    if (k === "five") five++;
-    else if (k === "overline") overline++;
-    else if (k === "four") four++;
-    else if (k === "three") three++;
-  }
-  if (five > 0) return { result: "win" };           // exact five wins, overrides禁手
-  if (overline > 0) return { result: "forbidden", reason: "長連" };
-  if (four >= 2) return { result: "forbidden", reason: "四四" };
-  if (three >= 2) return { result: "forbidden", reason: "三三" };
-  return { result: "ok" };
-}
-
-// Empties (near existing stones) that would be forbidden for black on grid b.
-function computeForbiddenPoints(b) {
-  const set = new Set();
-  for (const { r, c } of getCandidates(b)) {
-    b[r][c] = BLACK;
-    const a = analyzeBlack(b, r, c);
-    b[r][c] = EMPTY;
-    if (a.result === "forbidden") set.add(r + "," + c);
-  }
-  return set;
-}
-
-// ---- AI heuristic ----
-function scorePattern(b, r, c, dr, dc, color) {
-  function scan(dr2, dc2) {
-    let count = 0;
-    let rr = r + dr2, cc = c + dc2;
-    while (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE) {
-      if (b[rr][cc] === color) { count++; rr += dr2; cc += dc2; }
-      else { break; }
-    }
-    const open = (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE) && b[rr][cc] === EMPTY;
-    return { count, open };
-  }
-
-  const fwd = scan(dr, dc);
-  const bwd = scan(-dr, -dc);
-  const total = fwd.count + bwd.count + 1;
-  const opens = (fwd.open ? 1 : 0) + (bwd.open ? 1 : 0);
-
-  if (total >= 5)              return 100000;
-  if (total === 4 && opens >= 1) return 10000;
-  if (total === 4 && opens === 0) return 500;
-  if (total === 3 && opens === 2) return 1000;
-  if (total === 3 && opens === 1) return 200;
-  if (total === 2 && opens === 2) return 50;
-  if (total === 2 && opens === 1) return 10;
-  return 0;
-}
-
-function scoreCell(b, r, c, color) {
-  let s = 0;
-  for (const [dr, dc] of DIRS4) s += scorePattern(b, r, c, dr, dc, color);
-  return s;
-}
-
-function getCandidates(b) {
-  const cands = new Set();
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      if (b[r][c] === EMPTY) continue;
-      for (let dr = -2; dr <= 2; dr++) {
-        for (let dc = -2; dc <= 2; dc++) {
-          const nr = r + dr, nc = c + dc;
-          if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && b[nr][nc] === EMPTY) {
-            cands.add(nr * SIZE + nc);
-          }
-        }
-      }
-    }
-  }
-  if (cands.size === 0) {
-    const mid = Math.floor(SIZE / 2);
-    cands.add(mid * SIZE + mid);
-  }
-  return [...cands].map(k => ({ r: Math.floor(k / SIZE), c: k % SIZE }));
-}
-
-function getAIMove(b) {
-  const cands = getCandidates(b);
-  const mid = Math.floor(SIZE / 2);
-  let bestScore = -1;
-  let bestCells = [];
-
-  for (const { r, c } of cands) {
-    const attack = scoreCell(b, r, c, WHITE);
-    const defense = scoreCell(b, r, c, BLACK);
-    const score = Math.max(attack, defense * 0.95);
-    if (score > bestScore) {
-      bestScore = score;
-      bestCells = [{ r, c }];
-    } else if (score === bestScore) {
-      bestCells.push({ r, c });
-    }
-  }
-
-  if (bestCells.length > 1) {
-    bestCells.sort((a, b) => {
-      const da = Math.abs(a.r - mid) + Math.abs(a.c - mid);
-      const db = Math.abs(b.r - mid) + Math.abs(b.c - mid);
-      return da - db;
-    });
-    const topDist = Math.abs(bestCells[0].r - mid) + Math.abs(bestCells[0].c - mid);
-    const tied = bestCells.filter(cell => Math.abs(cell.r - mid) + Math.abs(cell.c - mid) === topDist);
-    return tied.length === 1 ? tied[0] : rng.pick(tied);
-  }
-  return bestCells[0];
-}
 
 // ---- game flow ----
 function resolveGame(b) {
@@ -333,7 +112,7 @@ function placeStone(r, c) {
 function triggerAI(b) {
   aiThinking.value = true;
   setTimeout(() => {
-    const move = getAIMove(b);
+    const move = getAIMove(b, rng);
     if (!move) { aiThinking.value = false; return; }
     const nb = b.map(row => [...row]);
     nb[move.r][move.c] = WHITE;

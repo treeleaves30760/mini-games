@@ -12,59 +12,8 @@ const props = defineProps({
 });
 const emit = defineEmits(['solved']);
 
-// ---- word lists ----
-const ANSWERS = [
-  "ABOUT","ABOVE","ABUSE","ACTOR","ACUTE","ADMIT","ADOPT","ADULT","AFTER","AGAIN",
-  "AGENT","AGREE","AHEAD","ALARM","ALBUM","ALERT","ALIKE","ALIGN","ALIVE","ALLEY",
-  "ALLOW","ALONE","ALONG","ALTER","ANGEL","ANGLE","ANGRY","ANKLE","ANNEX","APART",
-  "APPLE","APPLY","ARENA","ARGUE","ARISE","ARMED","ARRAY","ASIDE","ASSET","ATLAS",
-  "AVOID","AWARD","AWARE","AWFUL","BASIC","BEACH","BEGAN","BEGIN","BEING","BELOW",
-  "BENCH","BIBLE","BLACK","BLADE","BLAME","BLAND","BLANK","BLAST","BLEED","BLEND",
-  "BLESS","BLIND","BLOCK","BLOOD","BLOWN","BOARD","BONUS","BOOST","BOOTH","BOUND",
-  "BRAIN","BRAND","BRAVE","BREAD","BREAK","BREED","BRIEF","BRING","BROAD","BROOK",
-  "BROWN","BUILD","BUILT","BURST","BUYER","CABIN","CAMEL","CANAL","CANDY","CARGO",
-  "CARRY","CAUSE","CEDAR","CHAIN","CHAIR","CHAOS","CHARM","CHART","CHASE","CHEAP",
-  "CHECK","CHEEK","CHESS","CHEST","CHIEF","CHILD","CHINA","CHORD","CIVIC","CIVIL",
-  "CLAIM","CLASS","CLEAN","CLEAR","CLERK","CLICK","CLIFF","CLOCK","CLONE","CLOSE",
-  "CLOUD","COACH","COAST","COMES","CORAL","COVER","CRACK","CRAFT","CRANE","CRASH",
-  "CRAZY","CREAM","CRIME","CRISP","CROSS","CROWD","CROWN","CRUEL","CRUSH","CURVE",
-];
-
-const VALID = [
-  ...ANSWERS,
-  "AAHED","AALII","ABACI","ABACK","ABASE","ABASH","ABATE","ABBEY","ABBOT","ABHOR",
-  "ABIDE","ABLER","ABODE","ABOON","ABORT","ABASH","ABUZZ","ABYSS","ACIDS","ACHED",
-  "ACHES","ACRES","ADDED","ADEPT","ADORE","ADORN","ADUST","AEONS","AFFIX","AFIRE",
-  "AFOOT","AFOUL","AFTER","AGAPE","AGATE","AGILE","AGING","AGLOW","AGONY","AIDED",
-  "AIDED","AIMER","AILED","AIMED","AIRED","AISLE","AKNOT","ALAND","ALOFT","ALONE",
-  "ALOOF","ALTAR","AMAZE","AMBER","AMBLE","AMEND","AMENT","AMINO","AMPLE","AMUSE",
-  "ANIME","ANKLE","ANNOY","ANTIC","ANVIL","AORTA","APPEAL","APPEL","APRON","ARID",
-  "ARMOR","AROMA","AROSE","ARSON","ARTSY","ASSAY","ASTER","ASTIR","ATONE","ATTIC",
-  "AUDIO","AUDIT","AUGHT","AUGUR","AUNTS","AVAIL","AVAST","AVID","AVOW","AXION",
-  "AZURE","BACON","BAGEL","BAGGY","BAIZE","BAKER","BALMY","BANAL","BARGE","BARON",
-  "BEARD","BEAST","BELLE","BELLY","BERRY","BERTH","BEVEL","BIRCH","BISON","BLAZE",
-  "BLISS","BLOAT","BLUNT","BLURB","BLURT","BLUSH","BOGGY","BOLTS","BONEY","BOOZE",
-  "BORAX","BORED","BOTCH","BOXER","BRAID","BRASH","BRAWL","BRISK","BRUNT","BRUSH",
-  "BUDDY","BUDGE","BUGGY","BULGE","BULLY","BUMPY","BUNNY","BURLY","BURNS","BUSHY",
-  "BYWAY","CADET","CAFFE","CAMEL","CAMEO","CAPER","CAPUT","CARDS","CARET","CARVE",
-  "CASTE","CATCH","CATER","CATTY","CEDAR","CELLAR","CHALK","CHAMP","CHANT","CHARE",
-  "CHASM","CHIDE","CHILL","CHIME","CHIMP","CHOMP","CHORE","CHOSE","CHURN","CINCH",
-  "CIRQUE","CLAMP","CLANG","CLANK","CLASP","CLAW","CLEFT","CLING","CLINK","CLOOP",
-  "CLUMP","CLUNG","COIL","COMET","COMIC","COMMA","CONCH","CONDO","CONIC","CONEY",
-  "COUPE","COURT","CRAVE","CREST","CRIMP","CROAK","CROOK","CROON","CRUDE","DAGGER",
-  "DAISY","DANCE","DANDY","DARED","DARTS","DATUM","DECRY","DEFER","DEITY","DELTA",
-  "DENSE","DEPOT","DEPTH","DERBY","DETER","DINGO","DIRTY","DISCO","DITCH","DIZZY",
-  "DODGE","DOGMA","DONOR","DOUBT","DOUGH","DOWDY","DOWEL","DOWNY","DRAPE","DRAWL",
-  "DREAD","DRIED","DRIFT","DRINK","DROOL","DROOP","DRONE","DROVE","DROWN","DUVET",
-  "DWARF","DWELL","EASEL","EERIE","EIGHT","ELBOW","EMBER","EMCEE","EMOTE","ENACT",
-  "ENDOW","ENSUE","ENTRY","EQUAL","EQUIP","ERODE","ERRAND","ESSAY","EVADE","EVENT",
-  "EVERY","EVOKE","EXACT","EXERT","EXTRA","FABLE","FACET","FAINT","FAITH","FANCY",
-  "FARCE","FATAL","FAUNA","FAVOR","FEAST","FECAL","FERAL","FERRY","FETCH","FIEND",
-  "FIFTH","FIFTY","FIGHT","FINAL","FIRST","FIXED","FJORD","FLAKY","FLAME","FLANK",
-  "FLARE","FLECK","FLESH","FLINT","FLOAT","FLOCK","FLOOD","FLOOR","FLORA","FLOSS",
-  "FLOUR","FLOWN","FLUID","FLUTE","FOCUS","FOGGY","FOLLY","FORCE","FORGE","FORTE",
-  "FORUM","FOYER","FRAIL","FRANK","FRAUD","FRILL","FRISK","FROTH","FROZE","FRUGAL",
-];
+// ---- word lists & scoring (shared, unit-tested in app/games/wordguess.ts) ----
+import { isValidWord, scoreGuess, pickAnswer } from "~/games/wordguess";
 
 // ---- state ----
 const boardRows = ref([]);   // Array of { letters: [{ch, state}] }
@@ -81,14 +30,10 @@ const toast = ref('');
 let toastTimer = null;
 
 // ---- seed / daily ----
-function makeAnswer(rng) {
-  return rng.pick(ANSWERS);
-}
-
 let rng;
 function regenerate() {
   rng = makeRng(props.seed);
-  answer.value = makeAnswer(rng);
+  answer.value = pickAnswer(rng);
   boardRows.value = Array.from({ length: 6 }, () => ({ letters: [] }));
   currentRow.value = 0;
   currentInput.value = [];
@@ -101,31 +46,6 @@ function regenerate() {
 
 watch(() => props.seed, regenerate);
 
-// ---- guess scoring ----
-function scoreGuess(guess, ans) {
-  const result = Array(5).fill('absent');
-  const ansArr = ans.split('');
-  const guessArr = guess.split('');
-  const pool = [...ansArr];
-  // Pass 1: correct
-  for (let i = 0; i < 5; i++) {
-    if (guessArr[i] === ansArr[i]) {
-      result[i] = 'correct';
-      pool[i] = null;
-    }
-  }
-  // Pass 2: present
-  for (let i = 0; i < 5; i++) {
-    if (result[i] === 'correct') continue;
-    const idx = pool.indexOf(guessArr[i]);
-    if (idx !== -1) {
-      result[i] = 'present';
-      pool[idx] = null;
-    }
-  }
-  return result;
-}
-
 function showToast(msg, ms = 1400) {
   toast.value = msg;
   clearTimeout(toastTimer);
@@ -136,8 +56,7 @@ async function submitGuess() {
   if (gameState.value !== 'playing') return;
   const guess = currentInput.value.join('');
   if (guess.length < 5) { showToast('再填滿 5 個字母'); triggerShake(currentRow.value); return; }
-  const valid = [...ANSWERS, ...VALID].map(w => w.toUpperCase());
-  if (!valid.includes(guess)) { showToast('不在詞庫中'); triggerShake(currentRow.value); return; }
+  if (!isValidWord(guess)) { showToast('不在詞庫中'); triggerShake(currentRow.value); return; }
 
   const states = scoreGuess(guess, answer.value);
   const row = currentRow.value;

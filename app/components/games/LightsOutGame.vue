@@ -2,6 +2,14 @@
 /* 關燈 Lights Out — guaranteed-solvable board via random-press generation.
    Click a cell to toggle it and its 4 orthogonal neighbors. Win = all off. */
 
+// Pure game logic (framework-free, unit-tested in app/games/lights-out.ts)
+// Aliased to avoid name collisions with local functions of the same name.
+import {
+  applyPress as _applyPress,
+  generateBoardFromSeed as _generateBoardFromSeed,
+  isWon as _isWon,
+} from "~/games/lights-out";
+
 const accent = "#ffd45e";
 
 const props = defineProps({
@@ -35,46 +43,10 @@ function stopTimer() {
   if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
 }
 
-function idx(r, c) {
-  return r * size.value + c;
-}
-
-// Apply a press at (r, c) to a given board array (mutates in-place)
-function applyPress(b, r, c, N) {
-  const toggle = (rr, cc) => {
-    if (rr >= 0 && rr < N && cc >= 0 && cc < N) {
-      b[rr * N + cc] ^= 1;
-    }
-  };
-  toggle(r, c);
-  toggle(r - 1, c);
-  toggle(r + 1, c);
-  toggle(r, c - 1);
-  toggle(r, c + 1);
-}
-
 function generateBoard() {
   const N = size.value;
-  const rng = makeRng(props.seed);
-
-  // Start all-off, apply N*N/2 random presses (guaranteed solvable)
-  const b = new Array(N * N).fill(0);
-  const numPresses = Math.max(N * N, Math.floor(N * N * 0.7));
-  let actualPresses = 0;
-  for (let i = 0; i < numPresses; i++) {
-    const r = rng.int(0, N - 1);
-    const c = rng.int(0, N - 1);
-    applyPress(b, r, c, N);
-    actualPresses++;
-  }
-
-  // If by chance all lights are already off, apply one more press
-  if (b.every((v) => v === 0)) {
-    applyPress(b, Math.floor(N / 2), Math.floor(N / 2), N);
-    actualPresses++;
-  }
-
-  scrambleMoves.value = actualPresses;
+  const { board: b, solution } = _generateBoardFromSeed(N, props.seed);
+  scrambleMoves.value = solution.length;
   return b;
 }
 
@@ -91,14 +63,14 @@ function pressCell(r, c) {
   if (gameState.value !== "playing") return;
   const N = size.value;
   const b = [...board.value];
-  applyPress(b, r, c, N);
+  _applyPress(b, r, c, N);
   board.value = b;
   moves.value++;
   checkWin();
 }
 
 function checkWin() {
-  if (board.value.every((v) => v === 0)) {
+  if (_isWon(board.value)) {
     stopTimer();
     gameState.value = "won";
     emit("solved", { moves: moves.value });

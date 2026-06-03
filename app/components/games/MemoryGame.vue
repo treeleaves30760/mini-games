@@ -3,6 +3,9 @@
    mismatch flips back. Clear every pair in as few moves as you can. Deck is a
    shuffled set of emoji pairs sized to the chosen board. */
 
+// ---- core game logic (pure, unit-tested) ----
+import { buildDeck, isMatch, canFlip, isWin as isDeckWon } from "~/games/memory";
+
 const props = defineProps({
   seed: { type: [String, Number], default: null },
   daily: { type: Boolean, default: false },
@@ -50,12 +53,7 @@ function newGame(diffKey) {
   const pairs = (d.cols * d.rows) / 2;
   const syms = SYMBOLS.slice(0, pairs);
   const rng = makeRng(props.seed);
-  cards.value = rng.shuffle([...syms, ...syms]).map((sym, i) => ({
-    id: i + 1,
-    sym,
-    flipped: false,
-    matched: false,
-  }));
+  cards.value = buildDeck(syms, rng);
   first = null;
   lock = false;
   started = false;
@@ -70,8 +68,8 @@ function newGame(diffKey) {
 }
 
 function flip(i) {
+  if (lock || won.value || !canFlip(cards.value, i, first)) return;
   const c = cards.value[i];
-  if (lock || won.value || c.flipped || c.matched) return;
   if (!started) {
     started = true;
     startTimer();
@@ -83,12 +81,12 @@ function flip(i) {
   }
   moves.value++;
   const a = cards.value[first];
-  if (a.sym === c.sym) {
+  if (isMatch(a, c)) {
     a.matched = true;
     c.matched = true;
     first = null;
     matched.value++;
-    if (matched.value === totalPairs.value) win();
+    if (isDeckWon(cards.value)) win();
   } else {
     lock = true;
     const g = gen;

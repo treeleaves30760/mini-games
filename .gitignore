@@ -7,6 +7,9 @@ dist
 # deps
 node_modules
 
+# test coverage
+coverage
+
 # logs
 *.log
 npm-debug.log*

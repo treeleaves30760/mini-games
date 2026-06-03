@@ -2,6 +2,12 @@
 /* 黑白棋 Reversi (Othello) — 8×8, Player=BLACK, AI=WHITE.
    Legal-move dots, flip animations, positional heuristic AI (1-ply). */
 
+// ---- pure game logic (unit-tested in app/games/reversi.ts) ----
+import {
+  EMPTY, BLACK, WHITE,
+  initBoard, getLegal, applyMove, countDiscs, aiMove, isGameOver,
+} from "~/games/reversi";
+
 const accent = "#57cc99";
 const SAVE_KEY = "playground.reversi.stats";
 
@@ -10,21 +16,6 @@ const props = defineProps({
   daily: { type: Boolean, default: false },
 });
 const emit = defineEmits(["solved"]);
-
-// Positional weights (corner-biased, edge-stable)
-const WEIGHTS = [
-  [120,-20, 20,  5,  5, 20,-20,120],
-  [-20,-40, -5, -5, -5, -5,-40,-20],
-  [ 20, -5, 15,  3,  3, 15, -5, 20],
-  [  5, -5,  3,  3,  3,  3, -5,  5],
-  [  5, -5,  3,  3,  3,  3, -5,  5],
-  [ 20, -5, 15,  3,  3, 15, -5, 20],
-  [-20,-40, -5, -5, -5, -5,-40,-20],
-  [120,-20, 20,  5,  5, 20,-20,120],
-];
-
-const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-const EMPTY = 0, BLACK = 1, WHITE = 2;
 
 // ---- reactive state ----
 const board      = ref([]);  // flat 64
@@ -37,82 +28,8 @@ const winner     = ref(0);
 const overlay    = reactive({ open: false, title: "", sub: "" });
 const stats      = reactive({ wins: 0, losses: 0, draws: 0 });
 
-// ---- rng (used for future seed expansions; board is fixed start) ----
+// ---- rng (used for tie-break in AI; board start position is fixed) ----
 const rng = makeRng(props.seed);
-
-function initBoard() {
-  const b = new Array(64).fill(EMPTY);
-  b[27] = WHITE; b[28] = BLACK;
-  b[35] = BLACK; b[36] = WHITE;
-  return b;
-}
-
-function idx(r, c) { return r * 8 + c; }
-function cell(b, r, c) { return b[idx(r, c)]; }
-function inBounds(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
-
-function getFlips(b, r, c, player) {
-  if (b[idx(r, c)] !== EMPTY) return [];
-  const opp = player === BLACK ? WHITE : BLACK;
-  const all = [];
-  for (const [dr, dc] of DIRS) {
-    const line = [];
-    let nr = r + dr, nc = c + dc;
-    while (inBounds(nr, nc) && cell(b, nr, nc) === opp) {
-      line.push(idx(nr, nc));
-      nr += dr; nc += dc;
-    }
-    if (line.length && inBounds(nr, nc) && cell(b, nr, nc) === player) {
-      all.push(...line);
-    }
-  }
-  return all;
-}
-
-function getLegal(b, player) {
-  const moves = [];
-  for (let r = 0; r < 8; r++)
-    for (let c = 0; c < 8; c++)
-      if (getFlips(b, r, c, player).length > 0)
-        moves.push(idx(r, c));
-  return moves;
-}
-
-function applyMove(b, pos, player) {
-  const nb = [...b];
-  const r = Math.floor(pos / 8), c = pos % 8;
-  const flips = getFlips(nb, r, c, player);
-  nb[pos] = player;
-  for (const f of flips) nb[f] = player;
-  return { board: nb, flips };
-}
-
-function countDiscs(b) {
-  let black = 0, white = 0;
-  for (const v of b) { if (v === BLACK) black++; else if (v === WHITE) white++; }
-  return { black, white };
-}
-
-// ---- AI heuristic (1-ply, positional + mobility) ----
-function aiScore(b, move, player) {
-  const { board: nb } = applyMove(b, move, player);
-  const r = Math.floor(move / 8), c = move % 8;
-  const opp = player === BLACK ? WHITE : BLACK;
-  const myMob  = getLegal(nb, player).length;
-  const oppMob = getLegal(nb, opp).length;
-  return WEIGHTS[r][c] * 2 + myMob * 3 - oppMob * 4;
-}
-
-function aiMove(b) {
-  const moves = getLegal(b, WHITE);
-  if (!moves.length) return -1;
-  let best = -Infinity, bestMove = moves[0];
-  for (const m of moves) {
-    const s = aiScore(b, m, WHITE);
-    if (s > best) { best = s; bestMove = m; }
-  }
-  return bestMove;
-}
 
 // ---- game flow ----
 function computeLegal() {
@@ -120,10 +37,7 @@ function computeLegal() {
 }
 
 function checkGameOver(b) {
-  const blackMoves = getLegal(b, BLACK);
-  const whiteMoves = getLegal(b, WHITE);
-  if (blackMoves.length === 0 && whiteMoves.length === 0) return true;
-  return false;
+  return isGameOver(b);
 }
 
 async function playerPlace(pos) {
@@ -148,7 +62,7 @@ async function playerPlace(pos) {
 
   // AI move after short delay
   setTimeout(async () => {
-    const m = aiMove(board.value);
+    const m = aiMove(board.value, rng);
     if (m >= 0) await doPlace(m, WHITE);
 
     if (checkGameOver(board.value)) { endGame(); return; }
@@ -159,7 +73,7 @@ async function playerPlace(pos) {
       turn.value = WHITE;
       computeLegal();
       setTimeout(async () => {
-        const m2 = aiMove(board.value);
+        const m2 = aiMove(board.value, rng);
         if (m2 >= 0) await doPlace(m2, WHITE);
         if (checkGameOver(board.value)) { endGame(); return; }
         turn.value = BLACK;

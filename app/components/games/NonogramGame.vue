@@ -1,6 +1,14 @@
 <script setup>
 /* 數織 Nonogram (Picross) — seeded solution generation, row/col clues, drag-paint.
-   Left-click fills, right-click (or X-mark toggle) marks definite-empty. */
+   Left-click fills, right-click (or X-mark toggle) marks definite-empty.
+   Pure game logic (clue computation, solution generation, win detection) lives
+   in app/games/nonogram.ts and is imported below. */
+
+import {
+  computeClues as _computeClues,
+  generateSolution as _generateSolution,
+  isSolved,
+} from "~/games/nonogram";
 
 const accent = "#5ec8d8";
 
@@ -29,45 +37,13 @@ let timerHandle = null;
 // Track drag state
 const dragState = reactive({ active: false, value: 0, axis: null, fixedLine: -1, startCell: -1 });
 
-function computeClues(grid, N) {
-  const rows = [];
-  const cols = [];
-  for (let r = 0; r < N; r++) {
-    const runs = [];
-    let run = 0;
-    for (let c = 0; c < N; c++) {
-      if (grid[r * N + c]) { run++; }
-      else if (run) { runs.push(run); run = 0; }
-    }
-    if (run) runs.push(run);
-    rows.push(runs.length ? runs : [0]);
-  }
-  for (let c = 0; c < N; c++) {
-    const runs = [];
-    let run = 0;
-    for (let r = 0; r < N; r++) {
-      if (grid[r * N + c]) { run++; }
-      else if (run) { runs.push(run); run = 0; }
-    }
-    if (run) runs.push(run);
-    cols.push(runs.length ? runs : [0]);
-  }
-  return { rows, cols };
-}
-
-function generateSolution(N) {
-  const rng = makeRng(props.seed);
-  // ~55% fill density
-  return Array.from({ length: N * N }, () => rng.bool(0.55) ? 1 : 0);
-}
-
 function initGame() {
   stopTimer();
   const N = size.value;
-  const sol = generateSolution(N);
+  const sol = _generateSolution(N, props.seed);
   solution.value = sol;
   board.value = new Array(N * N).fill(0);
-  const clues = computeClues(sol, N);
+  const clues = _computeClues(sol, N);
   rowClues.value = clues.rows;
   colClues.value = clues.cols;
   gameState.value = "playing";
@@ -97,10 +73,7 @@ const progress = computed(() => {
 });
 
 function checkWin() {
-  const sol = solution.value;
-  const b = board.value;
-  const correct = sol.every((v, i) => (v === 1) === (b[i] === 1));
-  if (!correct) return;
+  if (!isSolved(board.value, solution.value)) return;
   stopTimer();
   gameState.value = "won";
   emit("solved", { time: elapsed.value });

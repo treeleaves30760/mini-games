@@ -1,6 +1,16 @@
 <script setup>
 /* 找單字 Word Search — 12×12 grid, 8 directions, pointer-drag to select.
-   4 themed word banks; puzzle generated from seeded RNG (always solvable). */
+   4 themed word banks; puzzle generated from seeded RNG (always solvable).
+   Pure logic (grid generation, selection checking, win detection) lives in
+   ~/games/word-search.ts — only Vue/DOM/timer/localStorage concerns remain here. */
+
+import {
+  GRID_SIZE,
+  buildGrid,
+  getLineCells,
+  checkSelection,
+  isWinState,
+} from "~/games/word-search";
 
 const accent = "#f6c453";
 const SAVE_KEY = "playground.wordsearch.best";
@@ -10,31 +20,6 @@ const props = defineProps({
   daily: { type: Boolean, default: false },
 });
 const emit = defineEmits(['solved']);
-
-// ---- word banks ----
-const BANKS = {
-  ANIMALS: {
-    label: '動物 Animals',
-    words: ['CAT','DOG','FOX','OWL','BEAR','WOLF','LION','DEER','FROG','FISH','EAGLE','HORSE','TIGER','SNAKE','WHALE','SHARK','PANDA','ZEBRA'],
-  },
-  FRUITS: {
-    label: '水果 Fruits',
-    words: ['FIG','PEAR','PLUM','KIWI','LIME','MANGO','GRAPE','LEMON','PEACH','APPLE','MELON','BERRY','PAPAYA','CHERRY','BANANA','ORANGE','GUAVA','LYCHEE'],
-  },
-  SPACE: {
-    label: '宇宙 Space',
-    words: ['STAR','MOON','MARS','COMET','ORBIT','VENUS','SOLAR','PLUTO','SATURN','GALAXY','PLANET','NEBULA','METEOR','COSMOS','ROCKET','ECLIPSE','JUPITER'],
-  },
-  COLORS: {
-    label: '顏色 Colors',
-    words: ['RED','TAN','BLUE','GOLD','GREY','CYAN','PINK','JADE','IVORY','BLACK','GREEN','WHITE','CORAL','AMBER','VIOLET','INDIGO','MAROON','SCARLET'],
-  },
-};
-
-const GRID_SIZE = 12;
-const DIRS = [
-  [0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1],
-];
 
 // ---- grid state ----
 const grid        = ref([]);       // 2d array of letters
@@ -51,72 +36,18 @@ const elapsed     = ref(0);
 let timerInterval = null;
 const overlay = reactive({ open: false, title: '', sub: '' });
 
-// ---- grid builder ----
-function buildGrid(rng) {
-  const bankKey = rng.pick(Object.keys(BANKS));
-  const bank = BANKS[bankKey];
-  bankLabel.value = bank.label;
-
-  // pick ~8 words that fit in 12x12
-  const eligible = bank.words.filter(w => w.length <= GRID_SIZE);
-  const shuffled = rng.shuffle([...eligible]);
-  const chosen = shuffled.slice(0, 8);
-  wordList.value = chosen;
+// ---- regenerate ----
+function regenerate() {
+  const rng = makeRng(props.seed);
+  const result = buildGrid(rng);
+  grid.value = result.grid;
+  wordList.value = result.wordList;
+  bankLabel.value = result.bankLabel;
   foundSet.value = new Set();
-
-  // init empty grid
-  const g = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(''));
-
-  function place(word) {
-    const attempts = 200;
-    for (let t = 0; t < attempts; t++) {
-      const dir = rng.pick(DIRS);
-      const maxR = GRID_SIZE - 1;
-      const maxC = GRID_SIZE - 1;
-      let r = rng.int(0, maxR);
-      let c = rng.int(0, maxC);
-      // Check if word fits
-      const endR = r + dir[0] * (word.length - 1);
-      const endC = c + dir[1] * (word.length - 1);
-      if (endR < 0 || endR > maxR || endC < 0 || endC > maxC) continue;
-      // Check no conflict
-      let ok = true;
-      for (let i = 0; i < word.length; i++) {
-        const gr = r + dir[0] * i;
-        const gc = c + dir[1] * i;
-        if (g[gr][gc] !== '' && g[gr][gc] !== word[i]) { ok = false; break; }
-      }
-      if (!ok) continue;
-      // Place
-      for (let i = 0; i < word.length; i++) {
-        g[r + dir[0] * i][c + dir[1] * i] = word[i];
-      }
-      return true;
-    }
-    return false;
-  }
-
-  for (const w of chosen) place(w);
-
-  // Fill empty cells
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  for (let r = 0; r < GRID_SIZE; r++) {
-    for (let c = 0; c < GRID_SIZE; c++) {
-      if (g[r][c] === '') g[r][c] = letters[rng.int(0, 25)];
-    }
-  }
-
-  grid.value = g;
   selections.value = [];
   dragCells.value = [];
   gameWon.value = false;
   overlay.open = false;
-}
-
-// ---- regenerate ----
-function regenerate() {
-  const rng = makeRng(props.seed);
-  buildGrid(rng);
   stopTimer();
   startTime.value = 0;
   elapsed.value = 0;
@@ -135,27 +66,6 @@ function stopTimer() {
 
 // ---- drag selection ----
 function cellId(r, c) { return `${r},${c}`; }
-
-function getLineCells(start, end) {
-  const dr = end.r - start.r;
-  const dc = end.c - start.c;
-  const adR = Math.abs(dr);
-  const adC = Math.abs(dc);
-  // Must be in one of 8 directions
-  if (dr !== 0 && dc !== 0 && adR !== adC) return null;
-  const len = Math.max(adR, adC) + 1;
-  const stepR = dr === 0 ? 0 : dr / adR;
-  const stepC = dc === 0 ? 0 : dc / adC;
-  const cells = [];
-  for (let i = 0; i < len; i++) {
-    cells.push({ r: start.r + stepR * i, c: start.c + stepC * i });
-  }
-  return cells;
-}
-
-function cellsToWord(cells) {
-  return cells.map(({ r, c }) => grid.value[r][c]).join('');
-}
 
 // The grid element — we capture the pointer on the WHOLE grid (not the start
 // cell) and hit-test cells with elementFromPoint. Capturing the start cell would
@@ -196,14 +106,12 @@ function onPointerUp() {
   isDragging.value = false;
   if (!dragStart.value || dragCells.value.length < 2) { dragCells.value = []; dragStart.value = null; return; }
 
-  const word = cellsToWord(dragCells.value);
-  const reversed = word.split('').reverse().join('');
-  const match = wordList.value.find(w => w === word || w === reversed);
+  const match = checkSelection(dragCells.value, grid.value, wordList.value, foundSet.value);
 
-  if (match && !foundSet.value.has(match)) {
+  if (match) {
     foundSet.value.add(match);
     selections.value.push({ cells: [...dragCells.value], word: match });
-    if (foundSet.value.size === wordList.value.length) {
+    if (isWinState(foundSet.value, wordList.value)) {
       handleWin();
     }
   }

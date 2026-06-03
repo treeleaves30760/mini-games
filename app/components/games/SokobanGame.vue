@@ -1,6 +1,17 @@
 <script setup>
 /* 推箱子 Sokoban — tile grid, ASCII maps, undo, level nav, swipe + dpad + keyboard. */
 
+// ---- pure game logic (framework-free, unit-tested in app/games/sokoban.ts) ----
+import {
+  WALL,
+  TARGET,
+  LEVELS,
+  cellAt   as _cellAt,
+  boxAt    as _boxAt,
+  isTarget as _isTarget,
+  isWon    as _isWon,
+} from "~/games/sokoban";
+
 const accent = "#e8a87c";
 const BEST_KEY = "playground.sokoban.best";
 
@@ -9,111 +20,6 @@ const props = defineProps({
   daily: { type: Boolean, default: false },
 });
 const emit = defineEmits(["solved"]);
-
-// ---- levels ----
-// Cells: # wall  space floor  . target  $ box  * box-on-target  @ player  + player-on-target
-const RAW_LEVELS = [
-  {
-    name: "初探",
-    map: [
-      "#####",
-      "#@$.#",
-      "#####",
-    ],
-  },
-  {
-    name: "轉角",
-    map: [
-      "#####",
-      "# . #",
-      "# $ #",
-      "#@  #",
-      "#####",
-    ],
-  },
-  {
-    name: "雙星",
-    map: [
-      "#######",
-      "#  @  #",
-      "#.$  .#",
-      "# $ $ #",
-      "# . . #",
-      "#######",
-    ],
-  },
-  {
-    name: "雙箱迴廊",
-    map: [
-      "########",
-      "#      #",
-      "# .$@$.#",
-      "#      #",
-      "########",
-    ],
-  },
-  {
-    name: "四方陣",
-    map: [
-      "#########",
-      "#   .   #",
-      "#  $ $  #",
-      "# . @ . #",
-      "#  $ $  #",
-      "#   .   #",
-      "#########",
-    ],
-  },
-  {
-    name: "迷宮箱",
-    map: [
-      "########",
-      "#@  #  #",
-      "#$  .  #",
-      "##  #  #",
-      "#   $  #",
-      "# . .  #",
-      "########",
-    ],
-  },
-];
-
-// ---- tile constants ----
-const WALL = "#", FLOOR = " ", TARGET = ".", BOX = "$", BOX_ON = "*", PLAYER = "@", PLAYER_ON = "+";
-
-function parseLevel(raw) {
-  const grid = raw.map.map((row) => row.split(""));
-  const rows = grid.length;
-  const cols = Math.max(...grid.map((r) => r.length));
-  // pad rows to same width
-  for (const row of grid) {
-    while (row.length < cols) row.push(FLOOR);
-  }
-  let px = 0, py = 0;
-  const boxes = [];
-  const targets = [];
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const c = grid[y][x];
-      if (c === PLAYER || c === PLAYER_ON) { px = x; py = y; }
-      if (c === BOX || c === BOX_ON) boxes.push({ x, y });
-      if (c === TARGET || c === BOX_ON || c === PLAYER_ON) targets.push({ x, y });
-    }
-  }
-  // build clean floor/wall/target grid (remove player/box info)
-  const clean = grid.map((row) =>
-    row.map((c) => {
-      if (c === PLAYER) return FLOOR;
-      if (c === PLAYER_ON) return TARGET;
-      if (c === BOX) return FLOOR;
-      if (c === BOX_ON) return TARGET;
-      return c;
-    })
-  );
-  return { name: raw.name, grid: clean, rows, cols, px, py, boxes, targets };
-}
-
-const LEVELS = RAW_LEVELS.map(parseLevel);
 
 // ---- reactive state ----
 const rng = makeRng(props.seed);
@@ -129,10 +35,7 @@ const overlay = reactive({ open: false });
 const bestMap = ref({});  // keyed by level name
 
 const level = computed(() => LEVELS[li.value]);
-const isWon = computed(() => {
-  const tgts = level.value.targets;
-  return boxes.value.every((b) => tgts.some((t) => t.x === b.x && t.y === b.y));
-});
+const isWon = computed(() => _isWon(level.value, boxes.value));
 const bestForLevel = computed(() => bestMap.value[level.value.name] ?? null);
 
 function loadLevel(idx) {
@@ -164,18 +67,10 @@ function regenerate() {
 
 watch(() => props.seed, regenerate);
 
-// ---- movement ----
-function cellAt(x, y) {
-  const g = level.value.grid;
-  if (y < 0 || y >= level.value.rows || x < 0 || x >= level.value.cols) return WALL;
-  return g[y][x];
-}
-function boxAt(x, y) {
-  return boxes.value.findIndex((b) => b.x === x && b.y === y);
-}
-function isTarget(x, y) {
-  return level.value.targets.some((t) => t.x === x && t.y === y);
-}
+// ---- movement helpers (thin wrappers that bind reactive level/boxes) ----
+function cellAt(x, y) { return _cellAt(level.value, x, y); }
+function boxAt(x, y)  { return _boxAt(boxes.value, x, y); }
+function isTarget(x, y) { return _isTarget(level.value, x, y); }
 
 function move(dx, dy) {
   if (won.value) return;
