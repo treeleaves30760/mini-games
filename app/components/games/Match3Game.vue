@@ -188,44 +188,51 @@ async function delay(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function processCascade(grid) {
+async function processCascade() {
   let chain = 0;
   while (true) {
-    const matched = findMatches(grid);
+    const matched = findMatches(board.value);
     if (matched.size === 0) break;
 
+    // 1. pop the matched gems — they still show their real colours here
     clearing.value = new Set(matched);
     await delay(300);
 
     const pts = matched.size * 10 * (chain + 1);
     score.value += pts;
 
+    // 2. remove them — commit to the board so the cells visibly empty out
+    const cleared = board.value.map(row => [...row]);
     for (const key of matched) {
       const [r, c] = key.split(',').map(Number);
-      grid[r][c] = null;
+      cleared[r][c] = null;
     }
+    board.value = cleared;
     clearing.value = new Set();
+    await delay(110);
 
-    // gravity
+    // 3. gravity + refill — commit again so gems visibly drop into place
+    const next = board.value.map(row => [...row]);
     const newFalling = new Set();
     for (let c = 0; c < SIZE; c++) {
       let write = SIZE - 1;
       for (let r = SIZE - 1; r >= 0; r--) {
-        if (grid[r][c] !== null) {
+        if (next[r][c] !== null) {
           if (r !== write) {
-            grid[write][c] = grid[r][c];
-            grid[r][c] = null;
+            next[write][c] = next[r][c];
+            next[r][c] = null;
             newFalling.add(cellKey(write, c));
           }
           write--;
         }
       }
-      // fill top with new gems
+      // fill the top with new gems
       for (let r = write; r >= 0; r--) {
-        grid[r][c] = rng.int(0, GEM_TYPES - 1);
+        next[r][c] = rng.int(0, GEM_TYPES - 1);
         newFalling.add(cellKey(r, c));
       }
     }
+    board.value = next;
     falling.value = new Set(newFalling);
     await delay(250);
     falling.value = new Set();
@@ -237,8 +244,6 @@ async function processCascade(grid) {
     best.value = score.value;
     localStorage.setItem(BEST_KEY, String(best.value));
   }
-
-  board.value = grid.map(row => [...row]);
 }
 
 async function onCellClick(row, col) {
@@ -274,7 +279,7 @@ async function onCellClick(row, col) {
   board.value = grid.map(r => [...r]);
 
   await delay(150);
-  await processCascade(board.value.map(r => [...r]));
+  await processCascade();
 
   // check win/lose
   if (score.value >= TARGET_SCORE) {
@@ -350,13 +355,13 @@ onMounted(() => {
                   'is-clearing': isClearing(r, c),
                   'is-falling': isFalling(r, c),
                 }"
-                :style="{ '--gem-color': GEM_COLORS[gem] }"
-                :aria-label="`${GEM_LABELS[gem]} 位置 ${r+1} 行 ${c+1} 列`"
+                :style="{ '--gem-color': gem !== null ? GEM_COLORS[gem] : 'transparent' }"
+                :aria-label="gem !== null ? `${GEM_LABELS[gem]} 位置 ${r+1} 行 ${c+1} 列` : `空格 位置 ${r+1} 行 ${c+1} 列`"
                 :aria-pressed="isSelected(r, c)"
                 :disabled="animating || !gameActive"
                 @click="onCellClick(r, c)"
               >
-                <span class="gem-inner" />
+                <span v-if="gem !== null" class="gem-inner" />
               </button>
             </template>
           </div>
