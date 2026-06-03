@@ -157,19 +157,37 @@ function cellsToWord(cells) {
   return cells.map(({ r, c }) => grid.value[r][c]).join('');
 }
 
+// The grid element — we capture the pointer on the WHOLE grid (not the start
+// cell) and hit-test cells with elementFromPoint. Capturing the start cell would
+// swallow pointer events for every other cell (and touch implicitly captures to
+// the target), so dragging across cells would never register.
+const gridEl = ref(null);
+
+function cellFromPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const cell = el && el.closest ? el.closest('.ws-cell') : null;
+  if (!cell) return null;
+  const r = Number(cell.dataset.r);
+  const c = Number(cell.dataset.c);
+  if (Number.isNaN(r) || Number.isNaN(c)) return null;
+  return { r, c };
+}
+
 function onPointerDown(e, r, c) {
-  e.preventDefault();
   if (gameWon.value) return;
+  e.preventDefault();
   if (startTime.value === 0) startTime.value = Date.now();
   isDragging.value = true;
   dragStart.value = { r, c };
   dragCells.value = [{ r, c }];
-  try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+  try { gridEl.value?.setPointerCapture(e.pointerId); } catch (_) {}
 }
 
-function onPointerEnter(r, c) {
+function onPointerMove(e) {
   if (!isDragging.value || !dragStart.value) return;
-  const line = getLineCells(dragStart.value, { r, c });
+  const pt = cellFromPoint(e.clientX, e.clientY);
+  if (!pt) return;
+  const line = getLineCells(dragStart.value, pt);
   dragCells.value = line || [dragStart.value];
 }
 
@@ -269,9 +287,11 @@ onBeforeUnmount(() => {
 
         <div class="board-wrap">
           <div
+            ref="gridEl"
             class="ws-grid"
             :style="{ '--cols': GRID_SIZE }"
             aria-label="找單字遊戲格"
+            @pointermove="onPointerMove"
             @pointerup="onPointerUp"
             @pointercancel="onPointerUp"
           >
@@ -291,9 +311,10 @@ onBeforeUnmount(() => {
                 :style="isCellInSelection(r-1, c-1) ? {
                   '--sel-color': SEL_COLORS[selectionColorIndex(r-1, c-1) % SEL_COLORS.length]
                 } : {}"
+                :data-r="r-1"
+                :data-c="c-1"
                 :aria-label="`${grid[r-1]?.[c-1]} 第${r}行第${c}列`"
                 @pointerdown="(e) => onPointerDown(e, r-1, c-1)"
-                @pointerenter="() => onPointerEnter(r-1, c-1)"
               >
                 {{ grid[r-1]?.[c-1] }}
               </div>
@@ -354,13 +375,13 @@ onBeforeUnmount(() => {
   gap: 2px;
 }
 .ws-cell {
-  width: clamp(26px, 5.5vw, 38px);
-  height: clamp(26px, 5.5vw, 38px);
+  width: clamp(30px, 6.4vw, 44px);
+  height: clamp(30px, 6.4vw, 44px);
   display: grid;
   place-items: center;
   border-radius: 5px;
   font-family: var(--font-mono);
-  font-size: clamp(0.65rem, 1.4vw, 0.9rem);
+  font-size: clamp(0.9rem, 1.9vw, 1.15rem);
   font-weight: 700;
   letter-spacing: 0.02em;
   background: var(--ink-800);
@@ -389,7 +410,7 @@ onBeforeUnmount(() => {
 }
 .ws-word {
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--text);
