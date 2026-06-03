@@ -22,6 +22,10 @@ import FloodGame from "~/components/games/FloodGame.vue";
 import TwentyFourGame from "~/components/games/TwentyFourGame.vue";
 import WordSearchGame from "~/components/games/WordSearchGame.vue";
 import MemoryGame from "~/components/games/MemoryGame.vue";
+import PipesGame from "~/components/games/PipesGame.vue";
+import HashiGame from "~/components/games/HashiGame.vue";
+import AkariGame from "~/components/games/AkariGame.vue";
+import TentsGame from "~/components/games/TentsGame.vue";
 
 const { games } = useGames();
 
@@ -40,6 +44,10 @@ const ROTATION = [
   { id: "twenty-four", comp: TwentyFourGame },
   { id: "word-search", comp: WordSearchGame },
   { id: "memory", comp: MemoryGame },
+  { id: "pipes", comp: PipesGame },
+  { id: "hashi", comp: HashiGame },
+  { id: "akari", comp: AkariGame },
+  { id: "tents", comp: TentsGame },
 ];
 
 const STORE_KEY = "playground.daily";

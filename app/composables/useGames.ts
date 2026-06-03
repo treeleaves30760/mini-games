@@ -436,6 +436,114 @@ const GAMES: Game[] = [
         </g>
       </svg>`,
   },
+  {
+    id: "pipes",
+    title: "水管",
+    titleEn: "Pipes",
+    desc: "旋轉每一段管線，把整個盤面接成一張不漏水的網路，全部接通中央的水源就過關。",
+    tags: ["益智", "管線"],
+    accent: "#34c7c0",
+    category: "邏輯",
+    type: "native",
+    to: "/games/pipes",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g stroke="var(--text-faint)" stroke-width="2" opacity="0.35">
+          <path d="M12 12 H108 V108 H12 Z M12 60 H108 M60 12 V108"/>
+        </g>
+        <g stroke="var(--accent)" stroke-width="9" stroke-linecap="round">
+          <path d="M60 18 V60 H102"/>
+          <path d="M18 60 H60"/>
+          <path d="M60 60 V102"/>
+        </g>
+        <circle cx="60" cy="60" r="12" fill="var(--accent)"/>
+        <circle cx="60" cy="60" r="4.5" fill="var(--ink-900)"/>
+      </svg>`,
+  },
+  {
+    id: "hashi",
+    title: "數橋",
+    titleEn: "Hashi",
+    desc: "在島嶼之間架起直橋，讓每座島的橋數等於島上的數字，並把所有島連成一片。",
+    tags: ["益智", "邏輯"],
+    accent: "#9d8cff",
+    category: "邏輯",
+    type: "native",
+    to: "/games/hashi",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g stroke="var(--accent)" stroke-width="3" opacity="0.75">
+          <path d="M30 26 H90 M30 34 H90"/>
+          <path d="M30 30 V90"/>
+          <path d="M86 30 V90 M94 30 V90"/>
+        </g>
+        <g fill="var(--ink-900)" stroke="var(--accent)" stroke-width="3.5">
+          <circle cx="30" cy="30" r="15"/>
+          <circle cx="90" cy="30" r="15"/>
+          <circle cx="30" cy="90" r="15"/>
+          <circle cx="90" cy="90" r="15"/>
+        </g>
+        <g fill="var(--text)" font-family="'Space Mono', ui-monospace, monospace" font-size="17" font-weight="700" text-anchor="middle">
+          <text x="30" y="36">3</text><text x="90" y="36" fill="var(--accent)">3</text>
+          <text x="30" y="96">1</text><text x="90" y="96">2</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "akari",
+    title: "照明",
+    titleEn: "Light Up",
+    desc: "在盤面擺放燈泡照亮每一格，任兩顆燈不能互射，數字牆限制周圍的燈泡數量。",
+    tags: ["益智", "邏輯"],
+    accent: "#ffc24b",
+    category: "邏輯",
+    type: "native",
+    to: "/games/akari",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="12" y="12" width="24" height="24" rx="5" fill="var(--ink-600)"/>
+        <text x="24" y="31" font-family="'Space Mono', ui-monospace, monospace" font-size="16" font-weight="700" text-anchor="middle" fill="var(--accent)">1</text>
+        <rect x="84" y="84" width="24" height="24" rx="5" fill="var(--ink-600)"/>
+        <g stroke="var(--accent)" stroke-width="5" stroke-linecap="round">
+          <path d="M60 26 V14 M60 106 V94 M26 60 H14 M106 60 H94 M38 38 l-9 -9 M91 91 l-9 -9 M82 38 l9 -9 M38 82 l-9 9"/>
+        </g>
+        <circle cx="60" cy="60" r="18" fill="var(--accent)"/>
+        <circle cx="54" cy="54" r="5" fill="#fff" opacity="0.5"/>
+      </svg>`,
+  },
+  {
+    id: "tents",
+    title: "帳篷",
+    titleEn: "Tents",
+    desc: "每棵樹旁紮一頂帳篷，依照行列旁的數字推理，帳篷彼此不能相鄰（含斜角）。",
+    tags: ["益智", "邏輯"],
+    accent: "#5bb368",
+    category: "邏輯",
+    type: "native",
+    to: "/games/tents",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g fill="var(--text-faint)" font-family="'Space Mono', ui-monospace, monospace" font-size="14" font-weight="700" text-anchor="middle">
+          <text x="40" y="20">1</text><text x="84" y="20" fill="var(--accent)">1</text>
+        </g>
+        <g transform="translate(40 66)">
+          <path d="M0 -28 L16 0 L-16 0 Z" fill="var(--accent)" fill-opacity="0.4" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M0 -12 L15 16 L-15 16 Z" fill="var(--accent)" fill-opacity="0.4" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+          <rect x="-4" y="16" width="8" height="14" rx="2" fill="var(--text-faint)"/>
+        </g>
+        <g transform="translate(84 66)">
+          <path d="M0 -24 L22 24 L-22 24 Z" fill="var(--accent)" fill-opacity="0.85" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M0 -24 V24" stroke="var(--ink-900)" stroke-width="3"/>
+          <path d="M0 24 L9 6" stroke="var(--ink-900)" stroke-width="2.5"/>
+        </g>
+      </svg>`,
+  },
 
   /* ===== Board games vs AI ===== */
   {
@@ -485,33 +593,6 @@ const GAMES: Game[] = [
         <circle cx="72" cy="48" r="11" fill="var(--text)"/>
         <circle cx="48" cy="72" r="11" fill="var(--text)"/>
         <circle cx="72" cy="72" r="11" fill="#0a0b0f" stroke="var(--text-faint)" stroke-width="1"/>
-      </svg>`,
-  },
-  {
-    id: "connect4",
-    title: "四子棋",
-    titleEn: "Connect Four",
-    desc: "輪流投入棋子，搶先連成四子。對手是會算殺的 alpha-beta AI。",
-    tags: ["棋類", "AI"],
-    accent: "#ffcf5e",
-    category: "棋類",
-    type: "native",
-    to: "/games/connect4",
-    available: true,
-    icon: `
-      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
-        <rect x="14" y="22" width="92" height="84" rx="12" fill="var(--accent)" fill-opacity="0.16" stroke="var(--accent)" stroke-width="2.5"/>
-        <g>
-          <circle cx="34" cy="86" r="10" fill="var(--accent)"/>
-          <circle cx="60" cy="86" r="10" fill="#ff5d6c"/>
-          <circle cx="34" cy="62" r="10" fill="#ff5d6c"/>
-          <circle cx="86" cy="86" r="10" fill="var(--accent)"/>
-          <circle cx="60" cy="62" r="10" fill="var(--accent)"/>
-        </g>
-        <g fill="var(--ink-900)" opacity="0.45">
-          <circle cx="86" cy="62" r="10"/><circle cx="34" cy="38" r="10"/>
-          <circle cx="60" cy="38" r="10"/><circle cx="86" cy="38" r="10"/>
-        </g>
       </svg>`,
   },
   {
