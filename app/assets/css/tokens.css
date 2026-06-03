@@ -37,8 +37,8 @@
   --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
 
   /* fluid type scale */
-  --fs-eyebrow: 0.78rem;
-  --fs-body: 1rem;
+  --fs-eyebrow: 0.85rem;
+  --fs-body: 1.05rem;
   --fs-lead: clamp(1.05rem, 1.6vw, 1.25rem);
   --fs-h3: clamp(1.25rem, 2.2vw, 1.6rem);
   --fs-h2: clamp(1.8rem, 4vw, 2.8rem);
