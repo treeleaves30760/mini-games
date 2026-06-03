@@ -25,11 +25,17 @@ const winStones = ref([]);
 const winner = ref(EMPTY);
 const aiThinking = ref(false);
 
+// Renju forbidden-move rule (applies to BLACK / 先手 only): no 三三 / 四四 / 長連.
+const renjuRule = ref(true);
+const forbiddenFlash = ref(null); // {r,c} flashed red when a forbidden move is blocked
+const forbiddenMsg = ref("");
+
 const tally = reactive({ win: 0, draw: 0, loss: 0 });
 const overlay = reactive({ open: false, title: "", sub: "" });
 
 let rng = makeRng(props.seed);
 let reducedMotion = false;
+let forbiddenTimer = null;
 
 watch(() => props.seed, () => {
   rng = makeRng(props.seed);
@@ -78,6 +84,109 @@ function findWin(b) {
 
 function isBoardFull(b) {
   return b.every(row => row.every(v => v !== EMPTY));
+}
+
+// ---- Renju forbidden moves (禁手) — BLACK only ----
+// A black move is forbidden when it forms a double-three (三三), a double-four
+// (四四) or an overline of six+ (長連). Making exactly five always wins and
+// overrides any forbidden shape. White (the AI) has no restrictions.
+
+// One direction through (r,c) as a small array: 1=black, 0=empty, -1=block/edge.
+function dirLine(b, r, c, dr, dc, radius) {
+  const arr = [];
+  for (let i = -radius; i <= radius; i++) {
+    const rr = r + dr * i, cc = c + dc * i;
+    if (rr < 0 || rr >= SIZE || cc < 0 || cc >= SIZE) arr.push(-1);
+    else if (b[rr][cc] === BLACK) arr.push(1);
+    else if (b[rr][cc] === EMPTY) arr.push(0);
+    else arr.push(-1);
+  }
+  return arr;
+}
+
+// Length of the contiguous black run passing through index ci.
+function maxRun(arr, ci) {
+  let len = 1;
+  for (let i = ci - 1; i >= 0 && arr[i] === 1; i--) len++;
+  for (let i = ci + 1; i < arr.length && arr[i] === 1; i++) len++;
+  return len;
+}
+
+// A "four": some empty cell, once filled, completes a run of EXACTLY five through
+// ci. Requiring exactly five rejects overline traps (e.g. BBB_BBB) that only
+// complete to six, which are not real four threats under Renju rules.
+function makesFour(arr, ci) {
+  for (let e = 0; e < arr.length; e++) {
+    if (arr[e] !== 0) continue;
+    arr[e] = 1;
+    const run = maxRun(arr, ci);
+    arr[e] = 0;
+    if (run === 5) return true;
+  }
+  return false;
+}
+
+// A straight/open four (".1111.") that includes ci among the four stones.
+function hasStraightFour(arr, ci) {
+  for (let s = 0; s + 5 < arr.length; s++) {
+    if (arr[s] === 0 && arr[s + 1] === 1 && arr[s + 2] === 1 &&
+        arr[s + 3] === 1 && arr[s + 4] === 1 && arr[s + 5] === 0 &&
+        ci >= s + 1 && ci <= s + 4) return true;
+  }
+  return false;
+}
+
+// An open three: some empty cell, once filled, turns this line into an open four.
+function makesOpenThree(arr, ci) {
+  for (let e = 0; e < arr.length; e++) {
+    if (arr[e] !== 0) continue;
+    arr[e] = 1;
+    const ok = hasStraightFour(arr, ci);
+    arr[e] = 0;
+    if (ok) return true;
+  }
+  return false;
+}
+
+// Classify the strongest threat the black stone at (r,c) makes in one direction.
+function classifyDir(b, r, c, dr, dc) {
+  const arr = dirLine(b, r, c, dr, dc, 5);
+  const ci = 5;
+  const run = maxRun(arr, ci);
+  if (run >= 6) return "overline";
+  if (run === 5) return "five";
+  if (makesFour(arr, ci)) return "four";
+  if (makesOpenThree(arr, ci)) return "three";
+  return "none";
+}
+
+// Verdict for a black stone already placed at (r,c) on grid b.
+function analyzeBlack(b, r, c) {
+  let five = 0, overline = 0, four = 0, three = 0;
+  for (const [dr, dc] of DIRS4) {
+    const k = classifyDir(b, r, c, dr, dc);
+    if (k === "five") five++;
+    else if (k === "overline") overline++;
+    else if (k === "four") four++;
+    else if (k === "three") three++;
+  }
+  if (five > 0) return { result: "win" };           // exact five wins, overrides禁手
+  if (overline > 0) return { result: "forbidden", reason: "長連" };
+  if (four >= 2) return { result: "forbidden", reason: "四四" };
+  if (three >= 2) return { result: "forbidden", reason: "三三" };
+  return { result: "ok" };
+}
+
+// Empties (near existing stones) that would be forbidden for black on grid b.
+function computeForbiddenPoints(b) {
+  const set = new Set();
+  for (const { r, c } of getCandidates(b)) {
+    b[r][c] = BLACK;
+    const a = analyzeBlack(b, r, c);
+    b[r][c] = EMPTY;
+    if (a.result === "forbidden") set.add(r + "," + c);
+  }
+  return set;
 }
 
 // ---- AI heuristic ----
@@ -200,6 +309,16 @@ function placeStone(r, c) {
   if (board.value[r][c] !== EMPTY) return;
   if (currentTurn.value !== BLACK) return;
 
+  if (renjuRule.value) {
+    const test = board.value.map(row => [...row]);
+    test[r][c] = BLACK;
+    const verdict = analyzeBlack(test, r, c);
+    if (verdict.result === "forbidden") {
+      flashForbidden(r, c, verdict.reason);
+      return;
+    }
+  }
+
   const nb = board.value.map(row => [...row]);
   nb[r][c] = BLACK;
   history.value = [...history.value, { r, c, color: BLACK }];
@@ -264,6 +383,33 @@ function saveTally() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(tally)); } catch (_) {}
 }
 
+// ---- forbidden-point marking (black's turn) ----
+const forbiddenPoints = computed(() => {
+  if (!renjuRule.value || gameOver.value || aiThinking.value || currentTurn.value !== BLACK) {
+    return new Set();
+  }
+  const grid = board.value.map((row) => [...row]);
+  return computeForbiddenPoints(grid);
+});
+
+function isForbidden(r, c) {
+  return forbiddenPoints.value.has(r + "," + c);
+}
+
+function toggleRenju() {
+  renjuRule.value = !renjuRule.value;
+}
+
+function flashForbidden(r, c, reason) {
+  forbiddenFlash.value = { r, c };
+  forbiddenMsg.value = `禁手！黑棋不可下「${reason}」`;
+  clearTimeout(forbiddenTimer);
+  forbiddenTimer = setTimeout(() => {
+    forbiddenFlash.value = null;
+    forbiddenMsg.value = "";
+  }, 1600);
+}
+
 onMounted(() => {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
@@ -308,6 +454,7 @@ function cellAriaLabel(r, c) {
 }
 
 const statusText = computed(() => {
+  if (forbiddenMsg.value) return forbiddenMsg.value;
   if (gameOver.value) {
     if (isDraw.value) return "平局";
     return winner.value === BLACK ? "黑棋獲勝！" : "白棋獲勝";
@@ -389,16 +536,20 @@ const statusText = computed(() => {
                 'has-white': cellState(cell.r, cell.c) === WHITE,
                 'is-win': isWinStone(cell.r, cell.c),
                 'is-last': isLastMove(cell.r, cell.c),
-                'is-hover': cellState(cell.r, cell.c) === EMPTY,
+                'is-hover': cellState(cell.r, cell.c) === EMPTY && !isForbidden(cell.r, cell.c),
+                'is-forbidden': isForbidden(cell.r, cell.c),
+                'is-forbidden-flash': forbiddenFlash && forbiddenFlash.r === cell.r && forbiddenFlash.c === cell.c,
               }"
               :style="{
                 left: `calc(${cell.c * CELL_FRAC}% - var(--stone-half))`,
                 top: `calc(${cell.r * CELL_FRAC}% - var(--stone-half))`,
               }"
-              :aria-label="cellAriaLabel(cell.r, cell.c)"
-              :disabled="cellState(cell.r, cell.c) !== EMPTY || gameOver || aiThinking || currentTurn !== BLACK"
+              :aria-label="cellAriaLabel(cell.r, cell.c) + (isForbidden(cell.r, cell.c) ? '（禁手）' : '')"
+              :disabled="cellState(cell.r, cell.c) !== EMPTY || gameOver || aiThinking || currentTurn !== BLACK || isForbidden(cell.r, cell.c)"
               @click="placeStone(cell.r, cell.c)"
-            />
+            >
+              <span v-if="isForbidden(cell.r, cell.c)" class="gomoku-x" aria-hidden="true">✕</span>
+            </button>
           </div>
 
           <div class="overlay" :class="{ 'is-open': overlay.open }">
@@ -422,6 +573,26 @@ const statusText = computed(() => {
             15×15 棋盤，你執黑，電腦執白。<br />
             率先連成五子（橫、直、斜）者獲勝。<br />
             點擊交叉點落子。
+          </p>
+        </div>
+
+        <div class="panel__group">
+          <span class="panel__legend">禁手規則</span>
+          <div class="toggle-row">
+            <span>黑棋禁手</span>
+            <button
+              class="switch"
+              role="switch"
+              :aria-checked="renjuRule ? 'true' : 'false'"
+              aria-label="黑棋禁手規則開關"
+              @click="toggleRenju"
+            ></button>
+          </div>
+          <p class="hint">
+            開啟後，先手黑棋不得下出
+            <strong style="color: var(--text)">三三</strong>、<strong style="color: var(--text)">四四</strong>
+            或 <strong style="color: var(--text)">長連</strong>（六子以上），必須改用四三等手段取勝。
+            盤面上的 <span style="color:#ff5d6c">✕</span> 即為禁著點。
           </p>
         </div>
 
@@ -504,6 +675,26 @@ const statusText = computed(() => {
 }
 .gomoku-cell:disabled {
   cursor: default;
+}
+/* Renju forbidden point: a red ✕ on an empty intersection black may not play. */
+.gomoku-cell.is-forbidden {
+  cursor: not-allowed;
+}
+.gomoku-x {
+  font-family: var(--font-mono);
+  font-size: calc(var(--stone-size) * 0.66);
+  font-weight: 700;
+  line-height: 1;
+  color: #ff5d6c;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.gomoku-cell.is-forbidden:hover .gomoku-x {
+  opacity: 1;
+}
+.gomoku-cell.is-forbidden-flash {
+  background: color-mix(in oklab, #ff5d6c 32%, transparent);
+  border-radius: 50%;
 }
 .gomoku-cell.is-hover:not(:disabled):hover {
   background: color-mix(in oklab, var(--accent) 22%, transparent);
