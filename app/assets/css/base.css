@@ -1,6 +1,7 @@
 /* =========================================================================
-   Base reset + shared atmosphere (background, grain, scrollbar, buttons).
-   Imported by every page after tokens.css.
+   Base reset + CRT atmosphere (grid, scanlines, vignette, grain), neon
+   selection / scrollbar / focus, and the shared arcade button system.
+   Imported after tokens.css.
    ========================================================================= */
 
 *,
@@ -28,26 +29,66 @@ body {
   overflow-x: hidden;
 }
 
-/* Atmospheric background: layered radial glows tinted with the three
-   game accents, painted onto the deep ink base. Fixed so it never scrolls. */
+/* ---- CRT atmosphere, painted by <AppBackground>. All fixed, all behind
+   content (negative z), all pointer-transparent. ---- */
+
+/* Layer 1: deep void + three drifting neon auroras. */
 .bg-atmosphere {
   position: fixed;
   inset: 0;
-  z-index: -2;
+  z-index: -4;
   background:
-    radial-gradient(60vw 50vw at 12% -8%, rgba(156, 232, 90, 0.10), transparent 60%),
-    radial-gradient(55vw 45vw at 92% 6%, rgba(106, 166, 255, 0.10), transparent 60%),
-    radial-gradient(70vw 60vw at 50% 112%, rgba(255, 176, 87, 0.08), transparent 60%),
+    radial-gradient(60vw 50vw at 8% -10%, color-mix(in oklab, var(--neon-cyan) 16%, transparent), transparent 60%),
+    radial-gradient(55vw 50vw at 95% 4%, color-mix(in oklab, var(--neon-magenta) 15%, transparent), transparent 60%),
+    radial-gradient(82vw 60vw at 50% 118%, color-mix(in oklab, var(--neon-violet) 13%, transparent), transparent 62%),
     var(--ink-900);
 }
 
-/* Fine grain overlay via SVG noise — gives the flat dark surfaces texture. */
+/* Layer 2: synthwave grid — framed to the top (hero) and bottom (footer),
+   faded out through the middle so the gallery stays calm and legible. */
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 30%, transparent 70%, #000 100%);
+  mask-image: linear-gradient(180deg, #000 0%, transparent 30%, transparent 70%, #000 100%);
+}
+
+/* Layer 3: CRT corner vignette (tube curvature). */
+.bg-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: radial-gradient(135% 125% at 50% 38%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* Layer 4: fine scanlines — barely there, just enough to feel like glass. */
+.bg-scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: repeating-linear-gradient(
+    0deg,
+    color-mix(in oklab, var(--scanline-color) 8%, transparent) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+/* Legacy grain overlay (kept; layered with the scanlines). */
 .bg-grain {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.04;
+  opacity: 0.05;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -73,9 +114,10 @@ button {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 4px;
+  box-shadow: var(--glow-sm);
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — thin neon-ish track */
 ::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -92,46 +134,57 @@ button {
   background: var(--ink-500);
 }
 
-/* ---- Shared button system ---- */
+/* ---- Shared arcade button system ----
+   Chunky, uppercase, neon-bordered; lifts and glows on hover, presses inward
+   on :active like a real cabinet button. --accent variant is a solid neon key. */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5em;
-  padding: 0.7em 1.2em;
-  font-family: var(--font-mono);
-  font-size: 0.92rem;
+  padding: 0.74em 1.3em;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  background: var(--ink-700);
+  border: 1px solid var(--line-strong);
+  background: color-mix(in oklab, var(--ink-700) 82%, transparent);
   color: var(--text);
+  white-space: nowrap;
   transition: transform var(--dur-fast) var(--ease),
     background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease);
+    box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
   user-select: none;
 }
 .btn:hover {
-  border-color: var(--line-strong);
-  background: var(--ink-600);
-  transform: translateY(-1px);
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--line-strong));
+  color: #fff;
+  box-shadow: var(--glow-sm);
+  transform: translateY(-2px);
 }
 .btn:active {
   transform: translateY(0);
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.55);
 }
 .btn--accent {
   background: var(--accent);
   color: var(--accent-ink);
   border-color: transparent;
+  box-shadow: var(--glow);
+  text-shadow: none;
 }
 .btn--accent:hover {
-  background: var(--accent);
   filter: brightness(1.08);
+  box-shadow: var(--glow-lg);
 }
 .btn--ghost {
   background: transparent;
+}
+.btn--ghost:hover {
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 /* Visually-hidden but available to screen readers */
@@ -145,6 +198,17 @@ button {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---- Shared arcade keyframes ---- */
+@keyframes neon-flicker {
+  0%, 18%, 22%, 25%, 53%, 57%, 100% { opacity: 1; }
+  20%, 24%, 55% { opacity: 0.74; }
+}
+@keyframes coin-blink {
+  0%, 44% { opacity: 1; }
+  50%, 94% { opacity: 0.15; }
+  100% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

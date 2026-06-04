@@ -24,10 +24,17 @@ useHead({
   <div>
     <!-- ===== Hero ===== -->
     <section class="hero wrap">
-      <p class="eyebrow reveal">Mini Games Collection · 小遊戲合輯</p>
+      <div class="hero-grid" aria-hidden="true"></div>
+      <p class="eyebrow reveal">
+        <span class="eyebrow__coin" aria-hidden="true">◉</span>
+        Insert Coin · 30+ Mini Games
+      </p>
       <h1 class="hero-title reveal d1">
-        在瀏覽器裡，<br />玩一場<span class="grad">好遊戲</span>。
+        <span class="hero-title__marquee" data-text="PLAYGROUND">PLAYGROUND</span>
       </h1>
+      <p class="hero-zh reveal d1">
+        在瀏覽器裡，玩一場<span class="grad">好遊戲</span>。
+      </p>
       <p class="hero-sub reveal d2">
         超過 30 款精選益智、解謎、棋類與街機小遊戲，以 Vue + Nuxt 打造、無需安裝，開啟即玩。
         還有<strong>每日挑戰</strong>——每天用當天日期生成一道全世界同題的關卡。
@@ -48,7 +55,7 @@ useHead({
       </div>
       <div class="hero-cta reveal d3">
         <NuxtLink to="/daily" class="btn btn--accent hero-cta__daily">
-          🗓 今日挑戰
+          ▶ 今日挑戰
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
             stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
         </NuxtLink>
@@ -59,7 +66,7 @@ useHead({
     <!-- ===== Game gallery ===== -->
     <section class="wrap" id="games">
       <div class="section-head">
-        <h2>選一款開始</h2>
+        <h2><span class="section-head__kicker">Select Game</span>選一款開始</h2>
         <span class="count">{{ playable }} 款可玩</span>
       </div>
 
@@ -85,7 +92,7 @@ useHead({
     <!-- ===== Extensibility ===== -->
     <section class="wrap" id="extend">
       <div class="section-head">
-        <h2>為未來而生</h2>
+        <h2><span class="section-head__kicker">Built to Grow</span>為未來而生</h2>
         <span class="count">EXTENSIBLE BY DESIGN</span>
       </div>
       <div class="exts">

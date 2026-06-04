@@ -1,66 +1,106 @@
 /* =========================================================================
-   Design Tokens — shared across the hub and every game page.
-   One source of truth for color, type, spacing, motion.
+   Design Tokens — NEON ARCADE / retro-future CRT.
+   One source of truth for color, type, glow, spacing, motion.
+
+   Token NAMES are a stable contract consumed by all 35 game components
+   (--accent, --ink-*, --text*, --line*, --font-*, --r-*, --shadow-*, --ease*,
+   --dur*). Values change; names do not.
    ========================================================================= */
 
 :root {
-  /* ---- Ink palette (dark, slightly warm near-black) ---- */
-  --ink-900: #0a0b0f;
-  --ink-850: #0d0f14;
-  --ink-800: #11141b;
-  --ink-700: #171b24;
-  --ink-600: #1f2531;
-  --ink-500: #2a3140;
+  /* ---- Void / surfaces — deep CRT indigo-black, faint blue-violet cast ---- */
+  --ink-900: #07071a; /* the void — page base */
+  --ink-850: #0a0a22;
+  --ink-800: #0e0e2b; /* card / surface base */
+  --ink-700: #16163c; /* raised surface */
+  --ink-600: #20204f;
+  --ink-500: #2c2c66;
+  --ink-400: #3a3a82;
 
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.16);
+  --line: rgba(150, 170, 255, 0.12);
+  --line-strong: rgba(160, 180, 255, 0.26);
 
-  --text: #edf0f5;
-  --text-dim: #969eae;
-  --text-faint: #5c6473;
+  /* ---- Text — cool phosphor white fading to faint periwinkle ---- */
+  --text: #ecf1ff;
+  --text-dim: #9aa3d4;
+  --text-faint: #616aa3;
 
-  /* ---- Per-game signature accents ---- */
-  --acc-snake: #9ce85a;   /* lime  */
-  --acc-sudoku: #6aa6ff;  /* azure */
-  --acc-oneline: #ffb057; /* amber */
-  --acc-memory: #ff7a9c;  /* rose   (reserved for future) */
-  --acc-2048: #c79bff;    /* violet (reserved for future) */
+  /* ---- Neon spectrum — the arcade's signature glow colors ---- */
+  --neon-cyan: #2bf3ff;
+  --neon-magenta: #ff3ca6;
+  --neon-yellow: #ffe14d;
+  --neon-green: #5dff9b;
+  --neon-violet: #b388ff;
+  --neon-blue: #5a8bff;
+  --neon-orange: #ff9b3d;
+
+  /* ---- Per-game signature accents (neon-tuned) ---- */
+  --acc-snake: #5dff9b; /* neon lime  */
+  --acc-sudoku: #2bf3ff; /* neon cyan  */
+  --acc-oneline: #ff9b3d; /* neon amber */
+  --acc-memory: #ff3ca6; /* neon rose  */
+  --acc-2048: #b388ff; /* neon violet */
 
   /* Generic accent — pages override --accent with their game color */
-  --accent: #9ce85a;
-  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
-  --accent-ink: #0a0b0f;
+  --accent: #2bf3ff;
+  --accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
+  --accent-ink: #05030f; /* near-black ink that sits on a neon fill */
 
-  /* ---- Typography ---- */
-  --font-display: "Bricolage Grotesque", "Noto Sans TC", system-ui, sans-serif;
-  --font-body: "Noto Sans TC", "Bricolage Grotesque", system-ui, sans-serif;
+  /* ---- Typography ----
+     display : Chakra Petch — techno arcade, headings / titles / buttons
+     body    : Noto Sans TC — Chinese + running text
+     mono    : Space Mono — HUD numerals / code (tabular, stable metrics)
+     pixel   : Press Start 2P — tiny pixel labels (eyebrows / tags / badges)
+     marquee : Monoton — the neon-tube hero wordmark only */
+  --font-display: "Chakra Petch", "Noto Sans TC", system-ui, sans-serif;
+  --font-body: "Noto Sans TC", "Chakra Petch", system-ui, sans-serif;
   --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-pixel: "Press Start 2P", "Space Mono", monospace;
+  --font-marquee: "Monoton", "Chakra Petch", cursive;
 
   /* fluid type scale */
-  --fs-eyebrow: 0.85rem;
+  --fs-eyebrow: clamp(0.54rem, 2.2vw, 0.8rem);
   --fs-body: 1.05rem;
-  --fs-lead: clamp(1.05rem, 1.6vw, 1.25rem);
+  --fs-lead: clamp(1.05rem, 1.6vw, 1.28rem);
   --fs-h3: clamp(1.25rem, 2.2vw, 1.6rem);
   --fs-h2: clamp(1.8rem, 4vw, 2.8rem);
   --fs-h1: clamp(2.6rem, 7vw, 5.5rem);
 
-  /* ---- Spacing / radius ---- */
-  --r-xs: 8px;
-  --r-sm: 12px;
-  --r-md: 18px;
-  --r-lg: 26px;
-  --r-xl: 36px;
+  /* ---- Spacing / radius — arcade cabinets read crisper at tighter radii ---- */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
   --r-pill: 999px;
 
   /* ---- Elevation ---- */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 14px 40px -18px rgba(0, 0, 0, 0.7);
-  --shadow-3: 0 30px 80px -30px rgba(0, 0, 0, 0.8);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 18px 48px -22px rgba(0, 0, 0, 0.85);
+  --shadow-3: 0 36px 90px -34px rgba(0, 0, 0, 0.92);
+
+  /* ---- Neon glow — driven by the current --accent so it tints per game ---- */
+  --glow-sm: 0 0 6px color-mix(in oklab, var(--accent) 55%, transparent);
+  --glow:
+    0 0 4px color-mix(in oklab, var(--accent) 70%, transparent),
+    0 0 16px color-mix(in oklab, var(--accent) 42%, transparent);
+  --glow-lg:
+    0 0 6px color-mix(in oklab, var(--accent) 85%, transparent),
+    0 0 26px color-mix(in oklab, var(--accent) 52%, transparent),
+    0 0 60px color-mix(in oklab, var(--accent) 26%, transparent);
+  --text-glow:
+    0 0 8px color-mix(in oklab, var(--accent) 55%, transparent),
+    0 0 22px color-mix(in oklab, var(--accent) 30%, transparent);
+
+  /* ---- Atmosphere — CRT grid + scanline geometry ---- */
+  --grid-color: rgba(120, 140, 255, 0.06);
+  --grid-size: 46px;
+  --scanline-color: rgba(120, 150, 255, 0.5);
 
   /* ---- Motion ---- */
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur-fast: 0.18s;
-  --dur: 0.32s;
+  --dur-fast: 0.16s;
+  --dur: 0.3s;
   --dur-slow: 0.6s;
 }

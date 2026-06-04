@@ -23,7 +23,7 @@ export default defineNuxtConfig({
           content:
             "超過 30 款精選網頁小遊戲：數獨、踩地雷、數織、五子棋、2048、貪食蛇等益智解謎與棋類遊戲，還有每日挑戰。簡潔現代、無需安裝，開啟即玩。以 Vue + Nuxt 打造。",
         },
-        { name: "theme-color", content: "#0a0b0f" },
+        { name: "theme-color", content: "#08071c" },
       ],
       link: [
         { rel: "icon", type: "image/svg+xml", href: `${baseURL}favicon.svg` },
@@ -31,7 +31,7 @@ export default defineNuxtConfig({
         { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
         {
           rel: "stylesheet",
-          href: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Noto+Sans+TC:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap",
+          href: "https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Monoton&family=Noto+Sans+TC:wght@400;500;700&family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap",
         },
       ],
     },
