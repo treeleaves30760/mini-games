@@ -775,6 +775,30 @@ const GAMES: Game[] = [
       </svg>`,
   },
   {
+    id: "jp-wordle",
+    title: "日語猜詞",
+    titleEn: "Japanese Word Guess",
+    desc: "用六次機會猜出一個四假名的日文常用單字，猜對後揭曉它的中文、英文意思與例句，邊玩邊背日語。",
+    tags: ["文字", "日語", "推理"],
+    accent: "#ff7ea6",
+    category: "文字",
+    type: "native",
+    to: "/games/jp-wordle",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g font-family="'Bricolage Grotesque','Noto Sans JP',sans-serif" font-size="30" font-weight="800" text-anchor="middle">
+          <rect x="14" y="30" width="42" height="42" rx="9" fill="var(--accent)"/>
+          <text x="35" y="62" fill="#0a0b0f">あ</text>
+          <rect x="62" y="30" width="42" height="42" rx="9" fill="var(--ink-600)" stroke="var(--text-faint)" stroke-width="1.5"/>
+          <text x="83" y="62" fill="var(--text)">い</text>
+          <rect x="38" y="78" width="42" height="42" rx="9" fill="#f6c453"/>
+          <text x="59" y="110" fill="#0a0b0f">う</text>
+        </g>
+      </svg>`,
+  },
+  {
     id: "word-search",
     title: "找單字",
     titleEn: "Word Search",

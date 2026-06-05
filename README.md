@@ -4,14 +4,14 @@ A modern, clean, and polished collection of web mini-games, built with **Vue 3 +
 
 Live demo: https://treeleaves30760.github.io/mini-games/
 
-It currently features **35 games** plus a **Daily Challenge**, grouped by category:
+It currently features **36 games** plus a **Daily Challenge**, grouped by category:
 
 | Category | Games |
 | --- | --- |
 | Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents |
 | Board (vs AI) | Gomoku (with Renju forbidden-move rules), Reversi, Tic-Tac-Toe, Dots & Boxes |
 | Numbers | 2048, 15 Puzzle, Make 24 (variable target), Mastermind |
-| Word | Word Guess, Word Search |
+| Word | Word Guess, Japanese Word Guess (hiragana Wordle of 58 words; on solving, reveals each word's Chinese/English meaning, a usage note, and two example sentences, with 🔊 audio playback via the Web Speech API), Word Search |
 | Memory | Memory, Simon |
 | Arcade | Snake, Tetris, Breakout, Match 3, Whack-a-Mole |
 | Maze | Maze, 3D Maze (Three.js) |
@@ -69,7 +69,7 @@ Preview the static output: `pnpm generate && pnpm dlx serve .output/public`
 │   │   ├── AppBackground.vue      # global ambient background + grain texture
 │   │   ├── GameCard.vue           # home-page game card
 │   │   ├── GameTopbar.vue         # shared game-page top bar (back / title / actions)
-│   │   └── games/                 # 35 game components (SnakeGame.vue, SudokuGame.vue,
+│   │   └── games/                 # 36 game components (SnakeGame.vue, SudokuGame.vue,
 │   │                              #   MinesweeperGame.vue, GomokuGame.vue ... Maze3DGame.vue)
 │   ├── composables/useGames.ts    # game registry + categories (single source of truth)
 │   ├── pages/

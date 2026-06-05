@@ -12,6 +12,7 @@ useHead({ title: "每日挑戰 Daily · 遊樂場" });
 // :is> we import the rotation games directly and map them by id.
 import MinesweeperGame from "~/components/games/MinesweeperGame.vue";
 import WordGuessGame from "~/components/games/WordGuessGame.vue";
+import JpWordGuessGame from "~/components/games/JpWordGuessGame.vue";
 import NonogramGame from "~/components/games/NonogramGame.vue";
 import LightsOutGame from "~/components/games/LightsOutGame.vue";
 import BinarioGame from "~/components/games/BinarioGame.vue";
@@ -34,6 +35,7 @@ const { games } = useGames();
 const ROTATION = [
   { id: "minesweeper", comp: MinesweeperGame },
   { id: "wordle", comp: WordGuessGame },
+  { id: "jp-wordle", comp: JpWordGuessGame },
   { id: "nonogram", comp: NonogramGame },
   { id: "lights-out", comp: LightsOutGame },
   { id: "binario", comp: BinarioGame },
