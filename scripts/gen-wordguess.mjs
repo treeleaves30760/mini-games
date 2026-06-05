@@ -1,45 +1,138 @@
-/* Build the Word Guess word data from the system dictionary.
-   - VALID_WORDS: every real 5-letter word (so common guesses like WORLD are accepted).
-   - ANSWERS: a curated set of common, fair answers, each verified to be a real word.
-   Run: node scripts/gen-wordguess.mjs */
+/* Build the Word Guess word data for every supported word length (5–8).
+   For each length L it emits app/games/wordguessWords{L}.ts containing:
+     - VALID_GUESSES: every real L-letter word the game accepts as a guess.
+         Sources unioned: the system dictionary (web2, incl. capitalised proper
+         nouns like APRIL), an-array-of-english-words (~275k modern words),
+         WordNet lemmas (adds country/month proper nouns such as KOREA/APRIL),
+         and a hand supplement. This is why everyday words and names that the old
+         web2-only list rejected (APRIL, KOREA, …) are now accepted.
+     - ANSWERS: the curated/common pool the puzzle picks its solution from.
+         L=5 keeps the original hand-curated list; L=6–8 are drawn from a
+         frequency list (google-10000) intersected with an-array (which excludes
+         proper nouns, so answers stay fair) and filtered to words that have a
+         definition.
+     - DEFINITIONS: a short gloss for every answer (WordNet, with a small hand
+         fallback/override map) so the game can tell you what the word means.
+
+   Self-contained: reads WordNet straight from the `wordnet-db` data files, so no
+   postinstall/build step is required. Run: node scripts/gen-wordguess.mjs */
 import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
 
-const DICT = "/usr/share/dict/words";
-// Filter on the ORIGINAL lowercase form so proper nouns (Aaron, Paris, …),
-// which appear capitalised in the dictionary, are excluded from a word game.
-const base = new Set(
-  fs
-    .readFileSync(DICT, "utf8")
-    .split("\n")
-    .map((w) => w.trim())
-    .filter((w) => /^[a-z]{5}$/.test(w))
-    .map((w) => w.toUpperCase()),
-);
+const require = createRequire(import.meta.url);
+const LENGTHS = [5, 6, 7, 8];
+const COMMON_FILE = "scripts/common-words.txt"; // google-10000, frequency-ordered
 
-// Common words the 1934-vintage system dictionary omits: modern terms, loanwords,
-// and inflected forms players routinely guess. Augments the valid-guess set so
-// everyday words aren't rejected (the same class of bug as WORLD being missing).
+// ----------------------------------------------------------------------------
+// Sources
+// ----------------------------------------------------------------------------
+
+// System dictionary (Webster's 2nd). Keep BOTH lowercase and capitalised forms
+// (uppercased) so proper nouns the old generator dropped — APRIL, INDIA, … — are
+// accepted as guesses. Missing on non-mac systems; we degrade gracefully.
+function readSystemDict() {
+  for (const p of ["/usr/share/dict/web2", "/usr/share/dict/words"]) {
+    try {
+      return fs.readFileSync(p, "utf8");
+    } catch {
+      /* try next */
+    }
+  }
+  console.warn("! system dictionary not found — relying on an-array + WordNet");
+  return "";
+}
+const web2 = new Set(); // every word (any case), uppercased — for valid guesses
+const web2Lower = new Set(); // only words that appear LOWERCASE in the dictionary.
+// Proper nouns are capitalised-only in web2, so a lowercase entry is a strong
+// "this is an ordinary word, not a name/place" signal — used to keep the answer
+// pool fair (no ALASKA/ALBERT/LONDON as the secret word, though they're valid guesses).
+for (const raw of readSystemDict().split("\n")) {
+  const w = raw.trim();
+  if (/^[a-zA-Z]+$/.test(w)) web2.add(w.toUpperCase());
+  if (/^[a-z]+$/.test(w)) web2Lower.add(w.toUpperCase());
+}
+
+// ~275k modern English words. Lowercase, and deliberately EXCLUDES proper nouns
+// — which makes it the perfect gate for keeping the answer pool fair.
+const anArray = require("an-array-of-english-words");
+const anArraySet = new Set(anArray.map((w) => w.toUpperCase()));
+
+// WordNet: lemma list (adds proper nouns like KOREA) + definitions, parsed
+// directly from the wordnet-db data files.
+const WN = loadWordNet();
+
+function loadWordNet() {
+  const dict = require("wordnet-db").path;
+  const POSES = ["noun", "adj", "verb", "adv"];
+  const data = {}; // pos -> Map(offset -> first definition clause)
+  const index = {}; // pos -> Map(lemma -> first-sense offset)
+  const lemmas = new Set();
+
+  for (const pos of POSES) {
+    const dmap = new Map();
+    for (const line of fs.readFileSync(path.join(dict, `data.${pos}`), "utf8").split("\n")) {
+      if (!line || line.startsWith("  ")) continue; // skip licence header
+      const offset = line.slice(0, 8);
+      const bar = line.indexOf("|");
+      if (bar < 0) continue;
+      // The gloss is `definition; definition; "example"` — keep the definition
+      // clauses (those not starting with a quote) and use the first one.
+      const clauses = line
+        .slice(bar + 1)
+        .trim()
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s && !s.startsWith('"'));
+      dmap.set(offset, clauses[0] || "");
+    }
+    data[pos] = dmap;
+
+    const imap = new Map();
+    for (const raw of fs.readFileSync(path.join(dict, `index.${pos}`), "utf8").split("\n")) {
+      const line = raw.trim();
+      if (!line || raw.startsWith("  ")) continue;
+      const parts = line.split(/\s+/);
+      const lemma = parts[0];
+      const synsetCnt = Number(parts[2]);
+      const offsets = parts.slice(parts.length - synsetCnt); // trailing offsets
+      imap.set(lemma, offsets[0]); // sense 1 = most common
+      if (/^[a-z]+$/.test(lemma)) lemmas.add(lemma.toUpperCase());
+    }
+    index[pos] = imap;
+  }
+
+  function defOf(word) {
+    const w = word.toLowerCase();
+    for (const pos of POSES) {
+      const off = index[pos].get(w);
+      if (off && data[pos].get(off)) {
+        return data[pos].get(off).replace(/\s+/g, " ").trim();
+      }
+    }
+    return null;
+  }
+  return { lemmas, defOf };
+}
+
+// ----------------------------------------------------------------------------
+// Hand data: supplement (extra valid guesses), curated 5-letter answers, and
+// definition fallbacks/overrides.
+// ----------------------------------------------------------------------------
+
+// Modern terms / inflections / loanwords players guess that the dictionaries may
+// miss. Any length; filtered per length below.
 const SUPPLEMENT = `
-PROUD BEGAN PASTA PIXEL TYPED EMAIL BLOGS VLOGS SUSHI SALSA MOCHA LATTE VEGAN
-DRONE EBOOK MODEM SCUBA TANGO SAMBA PANDA MANGO TACOS NACHO CURRY KEBAB VODKA
-WHISK COMBO TURBO RETRO DEMOS MEMES VIRAL MEDIA VIDEO ROBOT PROXY RERUN REHAB
-SETUP LOGIN ADMIN INTRO MACRO MICRO PHOTO TYPOS FAXED ZOOMS RUGBY
-MOVED LOVED LIVED SAVED NAMED NOTED VOTED DATED RATED ASKED BAKED JOKED LIKED
-HIKED BIKED FILED PILED FIXED MIXED CURED HIRED FIRED TIRED WIRED CARED DARED
-FADED FACED RACED PACED PAVED CAVED WAVED GAZED DOZED OOZED EYING OWING USING
-CALLS WALKS TALKS LOOKS NEEDS FEELS SEEMS KEEPS FINDS GIVES TAKES MAKES PLAYS
-STAYS WANTS WORKS TURNS HELPS MOVES LIVES LOVES NOTES VOTES DATES RATES BAKES
-JOKES HIKES BIKES FILES PILES CURES HIRES FIRES TIRES WIRES CARES DARES PACES
-GAMER GAMES NERDY GEEKY EMOJI VAPES SODAS DORKS BOSSY CHEWY GOOEY HUNKY KINKY
-LANKY MURKY PERKY PESKY PUDGY QUIRK SASSY SAVVY SOGGY SPIKY ZIPPY ZESTY WACKY
-CRAMP SCONE BAGEL DONUT WAFER FUDGE PESTO RAMEN BENTO DRUNK PRANK
-SWIPE TWEET REPLY SHARE LINKS POSTS USERS PINGS`.trim();
+EMAIL BLOGS VLOGS SUSHI SALSA MOCHA LATTE VEGAN DRONE EBOOK MODEM SCUBA TANGO
+SAMBA PANDA MANGO TACOS NACHO CURRY KEBAB VODKA COMBO TURBO RETRO MEMES VIRAL
+ROBOT PROXY SETUP LOGIN ADMIN INTRO MACRO MICRO PHOTO EMOJI VAPES SODAS RAMEN
+BENTO BAGEL DONUT WAFER FUDGE PESTO PIXEL SWIPE TWEET REPLY SHARE LINKS POSTS
+USERS PINGS SELFIE PODCAST EMOJIS MEMBER LAPTOP GADGET WIDGET WEBCAM ROUTER
+INTERNET DOWNLOAD KEYBOARD SOFTWARE HARDWARE PASSWORD`;
 
-const supplementWords = SUPPLEMENT.split(/\s+/).filter((w) => /^[A-Z]{5}$/.test(w));
-const valid = new Set([...base, ...supplementWords]);
-
-// Curated common answers spanning the alphabet (includes WORLD).
-const CANDIDATES = `
+// The original, hand-curated 5-letter answer pool (common, fair, no proper
+// nouns). Preserved verbatim so the daily puzzle and difficulty stay consistent.
+const CANDIDATES_5 = `
 ABOUT ABOVE ABUSE ACTOR ACUTE ADMIT ADOPT ADULT AFTER AGAIN AGENT AGREE AHEAD
 ALARM ALBUM ALERT ALIKE ALIVE ALLOW ALONE ALONG ALTER ANGEL ANGER ANGLE ANGRY
 ANKLE APART APPLE APPLY ARENA ARGUE ARISE ARRAY ASIDE ASSET AVOID AWARD AWARE
@@ -100,66 +193,167 @@ USUAL VAGUE VALID VALUE VALVE VAULT VENUE VERSE VIDEO VIRUS VISIT VITAL VOCAL
 VOICE VOTER WAGON WAIST WASTE WATCH WATER WEARY WEDGE WEIRD WHALE WHEAT WHEEL
 WHERE WHICH WHILE WHITE WHOLE WHOSE WIDEN WIDOW WIDTH WINCE WORLD WORRY WORSE
 WORST WORTH WOUND WRECK WRIST WRITE WRONG WROTE YACHT YEARN YIELD YOUNG YOUTH
-ZEBRA ZONAL
-`
-  .trim()
-  .split(/\s+/);
+ZEBRA ZONAL`;
 
-const seen = new Set();
-const answers = [];
-const missing = [];
-const dups = [];
-const badLen = [];
-for (const w of CANDIDATES) {
-  if (w.length !== 5) { badLen.push(w); continue; }
-  if (seen.has(w)) { dups.push(w); continue; }
-  seen.add(w);
-  if (!valid.has(w)) { missing.push(w); continue; }
-  answers.push(w);
+// Definitions for common words WordNet lacks (function words / irregular verb
+// forms) and a few overrides where WordNet's first sense is misleading for a
+// general-audience word game.
+const HAND_DEFS = {
+  // 5-letter function words & irregular forms (no WordNet gloss)
+  BEGAN: 'past tense of "begin"; started',
+  CHOSE: 'past tense of "choose"; picked from options',
+  COULD: 'past tense of "can"; was able to',
+  DRANK: 'past tense of "drink"; swallowed liquid',
+  FROZE: 'past tense of "freeze"; turned to ice',
+  MEANT: 'past tense of "mean"; intended',
+  MEDIA: "the channels of mass communication, such as TV and the press",
+  OUGHT: "used to express duty or what is advisable",
+  SHALL: "used to express the future tense or a strong intention",
+  SHOWN: 'past participle of "show"; made visible',
+  SINCE: "from a past time until now; because",
+  STOOD: 'past tense of "stand"; was upright on one\'s feet',
+  THEIR: "belonging to or associated with them",
+  THESE: 'plural of "this"; the ones here',
+  THOSE: 'plural of "that"; the ones there',
+  THREW: 'past tense of "throw"; sent through the air',
+  UNTIL: "up to the point in time of",
+  WHERE: "in, at, or to what place",
+  WHICH: "asking about a choice among a set",
+  WHOSE: "belonging to whom",
+  WROTE: 'past tense of "write"; formed letters or words',
+  // overrides: prefer the everyday meaning over WordNet's figurative sense 1
+  TIGER: "a large striped wild cat native to Asia",
+  TABLE: "a piece of furniture with a flat top and one or more legs",
+};
+
+// Words to keep OUT of the answer pool (still valid as guesses): adult topics
+// and a few that read awkwardly as a family-friendly puzzle solution.
+const ANSWER_BLOCKLIST = new Set(["EROTIC", "EROTICA", "SEXUALLY", "ESCORT", "PENIS"]);
+
+// ----------------------------------------------------------------------------
+// Build
+// ----------------------------------------------------------------------------
+
+const supplementWords = SUPPLEMENT.trim().split(/\s+/).filter((w) => /^[A-Z]+$/.test(w));
+const commonWords = fs.existsSync(COMMON_FILE)
+  ? fs
+      .readFileSync(COMMON_FILE, "utf8")
+      .split("\n")
+      .map((w) => w.trim().toUpperCase())
+      .filter((w) => /^[A-Z]+$/.test(w))
+  : [];
+
+// Definition for an answer word: hand map first, then WordNet, trimmed to a
+// readable length.
+function definitionFor(word) {
+  const hand = HAND_DEFS[word];
+  if (hand) return hand;
+  const wn = WN.defOf(word);
+  if (!wn) return null;
+  let d = wn.replace(/\s+/g, " ").trim();
+  if (d.length > 140) d = d.slice(0, 138).replace(/\s+\S*$/, "") + "…";
+  return d;
 }
-answers.sort();
 
-const validSorted = [...valid].sort();
+function buildLength(L) {
+  // Valid guesses: union of all sources, this length only.
+  const valid = new Set();
+  const add = (w) => {
+    if (w.length === L && /^[A-Z]+$/.test(w)) valid.add(w);
+  };
+  web2.forEach(add);
+  anArraySet.forEach(add);
+  WN.lemmas.forEach(add);
+  supplementWords.forEach(add);
 
-console.log("VALID (dict) 5-letter words:", validSorted.length);
-console.log("ANSWERS kept:", answers.length);
-console.log("ANSWERS dropped — wrong length:", badLen.join(", ") || "(none)");
-console.log("ANSWERS dropped — duplicates:", dups.join(", ") || "(none)");
-console.log("ANSWERS dropped — NOT in dict (fix these):", missing.join(", ") || "(none)");
-console.log("WORLD in VALID?", valid.has("WORLD"), "| in ANSWERS?", answers.includes("WORLD"));
+  // Answer candidates: frequency-ordered common words that are ordinary words
+  // (a lowercase web2 entry — filters out proper nouns like ALASKA/LONDON). The
+  // original hand-curated 5-letter pool is unioned in and exempt from the
+  // commonness/casing filter so the classic daily list is preserved in full.
+  const curated = L === 5 ? CANDIDATES_5.trim().split(/\s+/) : [];
+  const fromFrequency = commonWords.filter((w) => w.length === L && web2Lower.has(w));
+  const isCurated = new Set(curated);
 
-// Emit the generated data module.
-function fmt(arr) {
+  const seen = new Set();
+  const answers = [];
+  const definitions = {};
+  const dropped = { dupe: [], nodef: [], blocked: [] };
+  for (const w of [...curated, ...fromFrequency]) {
+    if (w.length !== L || !/^[A-Z]+$/.test(w)) continue;
+    if (seen.has(w)) {
+      dropped.dupe.push(w);
+      continue;
+    }
+    seen.add(w);
+    if (ANSWER_BLOCKLIST.has(w) && !isCurated.has(w)) {
+      dropped.blocked.push(w);
+      continue;
+    }
+    const def = definitionFor(w);
+    if (!def) {
+      dropped.nodef.push(w);
+      continue;
+    }
+    answers.push(w);
+    definitions[w] = def;
+    valid.add(w); // every answer must be an accepted guess
+  }
+  answers.sort();
+
+  return { valid: [...valid].sort(), answers, definitions, dropped };
+}
+
+// ----------------------------------------------------------------------------
+// Emit
+// ----------------------------------------------------------------------------
+
+function fmtAnswers(arr) {
   const lines = [];
   for (let i = 0; i < arr.length; i += 10) {
     lines.push("  " + arr.slice(i, i + 10).map((w) => `"${w}"`).join(", ") + ",");
   }
   return lines.join("\n");
 }
-// Pack the large valid-guess list as a single space-joined string (split at
-// runtime) — much smaller in source than a quoted array of ~8,600 entries.
-function packed(arr) {
+function fmtDefs(answers, defs) {
+  return answers.map((w) => `  ${JSON.stringify(w)}: ${JSON.stringify(defs[w])},`).join("\n");
+}
+function packValid(arr) {
   const lines = [];
-  for (let i = 0; i < arr.length; i += 18) {
-    lines.push("  " + arr.slice(i, i + 18).join(" "));
-  }
+  for (let i = 0; i < arr.length; i += 18) lines.push("  " + arr.slice(i, i + 18).join(" "));
   return lines.join("\n");
 }
-const out = `/* AUTO-GENERATED by scripts/gen-wordguess.mjs — do not edit by hand.
-   ANSWERS: curated common words used as puzzle solutions.
-   VALID_GUESSES: every real 5-letter word (system dictionary + a supplement of
-   common modern/inflected words) so everyday guesses such as WORLD are accepted.
+
+for (const L of LENGTHS) {
+  const { valid, answers, definitions, dropped } = buildLength(L);
+  const out = `/* AUTO-GENERATED by scripts/gen-wordguess.mjs — do not edit by hand.
+   ${L}-letter Word Guess data.
+     ANSWERS      — common, fair words the puzzle is drawn from.
+     DEFINITIONS  — a short gloss for every answer (shown when the round ends).
+     VALID_GUESSES — every real ${L}-letter word accepted as a guess.
    Regenerate with: node scripts/gen-wordguess.mjs */
 
 export const ANSWERS: string[] = [
-${fmt(answers)}
+${fmtAnswers(answers)}
 ];
 
-// ${validSorted.length} words, space-joined to keep the source compact.
+export const DEFINITIONS: Record<string, string> = {
+${fmtDefs(answers, definitions)}
+};
+
+// ${valid.length} words, space-joined to keep the source compact.
 const VALID_PACKED =
-\`${packed(validSorted)}\`;
+\`${packValid(valid)}\`;
 
 export const VALID_GUESSES: string[] = VALID_PACKED.trim().split(/\\s+/);
 `;
-fs.writeFileSync("app/games/wordguessWords.ts", out);
-console.log("\nWrote app/games/wordguessWords.ts");
+  const file = `app/games/wordguessWords${L}.ts`;
+  fs.writeFileSync(file, out);
+  console.log(
+    `L=${L}: valid=${valid.length}  answers=${answers.length}  ` +
+      `(dropped: ${dropped.nodef.length} no-def, ${dropped.dupe.length} dup, ${dropped.blocked.length} blocked) -> ${file}`,
+  );
+  if (L === 5 && dropped.nodef.length) {
+    console.log("   5-letter no-def (add a HAND_DEFS entry):", dropped.nodef.join(" "));
+  }
+}
+console.log("\nDone — wrote 4 per-length data files.");
