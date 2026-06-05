@@ -10,6 +10,7 @@
 const accent = "#ff7ea6";
 const SAVE_KEY = "playground.jpwordguess.stats";
 const LEARNED_KEY = "playground.jpwordguess.learned";
+const HINT_KEY = "playground.jpwordguess.showMeaning";
 
 const props = defineProps({
   seed: { type: [String, Number], default: null },
@@ -67,6 +68,7 @@ const revealRow = ref(-1);
 const statsData = ref({ played: 0, won: 0, streak: 0 });
 const learned = ref([]); // array of solved kana strings
 const solvedWord = ref(null); // JpWord kept on the panel after a win
+const showMeaning = ref(false); // optional Chinese-meaning clue for low-vocab players
 const overlay = reactive({ open: false, win: false, title: "", sub: "" });
 const toast = ref("");
 let toastTimer = null;
@@ -246,6 +248,17 @@ const learnedWords = computed(() =>
   learned.value.map((k) => WORD_BY_KANA[k]).filter(Boolean)
 );
 
+// Guesses used, clamped: after a loss currentRow advances past the last row, so
+// the raw `currentRow + 1` would read "7 / 6" — cap it at MAX_GUESSES.
+const guessNo = computed(() => Math.min(currentRow.value + 1, MAX_GUESSES));
+
+function toggleMeaning() {
+  showMeaning.value = !showMeaning.value;
+  try {
+    localStorage.setItem(HINT_KEY, showMeaning.value ? "1" : "0");
+  } catch (_) {}
+}
+
 // ---- pronunciation (Web Speech API — client-only, no network needed) ----
 const canSpeak = ref(false);
 let jaVoice = null;
@@ -296,6 +309,9 @@ onMounted(() => {
   try {
     learned.value = JSON.parse(localStorage.getItem(LEARNED_KEY) || "[]") || [];
   } catch (_) {}
+  try {
+    showMeaning.value = localStorage.getItem(HINT_KEY) === "1";
+  } catch (_) {}
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     canSpeak.value = true;
     refreshVoices();
@@ -327,7 +343,7 @@ onBeforeUnmount(() => {
         <div class="hud">
           <div class="chip">
             <span class="chip__label">猜測</span>
-            <span class="chip__value is-accent">{{ currentRow + 1 }} / {{ MAX_GUESSES }}</span>
+            <span class="chip__value is-accent">{{ guessNo }} / {{ MAX_GUESSES }}</span>
           </div>
           <div class="chip chip--hint" v-if="wordObj">
             <span class="chip__label">提示 ヒント</span>
@@ -338,6 +354,16 @@ onBeforeUnmount(() => {
             <span class="chip__value">{{ statsData.streak }}</span>
           </div>
         </div>
+
+        <!-- Optional Chinese-meaning clue, so players with a small vocabulary can
+             still play: see the meaning, then work out how to spell it in kana. -->
+        <Transition name="clue">
+          <div v-if="showMeaning && wordObj && gameState === 'playing'" class="clue" role="note">
+            <span class="clue__label">中文提示</span>
+            <span class="clue__zh">{{ wordObj.zh }}</span>
+            <span class="clue__en">{{ wordObj.en }}</span>
+          </div>
+        </Transition>
 
         <Teleport to="body">
           <Transition name="toast">
@@ -470,6 +496,21 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="panel__group">
+          <span class="panel__legend">中文提示</span>
+          <button
+            class="meaning-toggle"
+            :class="{ 'is-on': showMeaning }"
+            role="switch"
+            :aria-checked="showMeaning"
+            @click="toggleMeaning"
+          >
+            <span class="meaning-toggle__track"><span class="meaning-toggle__thumb"></span></span>
+            <span>顯示中文意思{{ showMeaning ? '（開）' : '（關）' }}</span>
+          </button>
+          <p class="hint">日文詞彙量還不多嗎？開啟後會先告訴你這個字的中文意思，你只要拼出對應的日文假名即可，邊玩邊背。</p>
+        </div>
+
+        <div class="panel__group">
           <span class="panel__legend">顏色說明</span>
           <div class="wg-legend">
             <div class="wg-legend-item">
@@ -529,6 +570,71 @@ onBeforeUnmount(() => {
 .toast-leave-to   { opacity: 0; transform: translateX(-50%) translateY(-6px); }
 
 .chip--hint .chip__value { color: var(--accent); font-family: var(--font-mono); font-size: 0.9rem; }
+
+/* Chinese-meaning clue banner */
+.clue {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.7rem;
+  margin: 0 auto 0.9rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: var(--r-pill);
+  background: color-mix(in oklab, var(--accent) 14%, var(--ink-800));
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, var(--line));
+}
+.clue__label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.clue__zh { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+.clue__en { font-size: 0.85rem; color: var(--text-dim); }
+.clue-enter-active, .clue-leave-active { transition: opacity 0.2s var(--ease), transform 0.2s var(--ease); }
+.clue-enter-from, .clue-leave-to { opacity: 0; transform: translateY(-5px); }
+
+/* meaning-hint toggle switch (side panel) */
+.meaning-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  background: var(--ink-700);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.meaning-toggle:hover { border-color: var(--line-strong); }
+.meaning-toggle.is-on { color: var(--text); border-color: color-mix(in oklab, var(--accent) 50%, var(--line)); }
+.meaning-toggle__track {
+  flex: none;
+  position: relative;
+  width: 40px;
+  height: 23px;
+  border-radius: 999px;
+  background: var(--ink-600);
+  transition: background 0.15s var(--ease);
+}
+.meaning-toggle.is-on .meaning-toggle__track { background: var(--accent); }
+.meaning-toggle__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 0.15s var(--ease), background 0.15s var(--ease);
+}
+.meaning-toggle.is-on .meaning-toggle__thumb { transform: translateX(17px); background: var(--ink-900); }
 
 .wg-board {
   display: grid;
