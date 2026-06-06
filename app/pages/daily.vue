@@ -27,6 +27,12 @@ import PipesGame from "~/components/games/PipesGame.vue";
 import HashiGame from "~/components/games/HashiGame.vue";
 import AkariGame from "~/components/games/AkariGame.vue";
 import TentsGame from "~/components/games/TentsGame.vue";
+import KenKenGame from "~/components/games/KenKenGame.vue";
+import EquationMazeGame from "~/components/games/EquationMazeGame.vue";
+import FractionBalanceGame from "~/components/games/FractionBalanceGame.vue";
+import PrimeHunterGame from "~/components/games/PrimeHunterGame.vue";
+import CountdownGame from "~/components/games/CountdownGame.vue";
+import FunctionRunnerGame from "~/components/games/FunctionRunnerGame.vue";
 
 const { games } = useGames();
 
@@ -50,6 +56,12 @@ const ROTATION = [
   { id: "hashi", comp: HashiGame },
   { id: "akari", comp: AkariGame },
   { id: "tents", comp: TentsGame },
+  { id: "kenken", comp: KenKenGame },
+  { id: "equation-maze", comp: EquationMazeGame },
+  { id: "fraction-balance", comp: FractionBalanceGame },
+  { id: "prime-hunter", comp: PrimeHunterGame },
+  { id: "countdown", comp: CountdownGame },
+  { id: "function-runner", comp: FunctionRunnerGame },
 ];
 
 const STORE_KEY = "playground.daily";
