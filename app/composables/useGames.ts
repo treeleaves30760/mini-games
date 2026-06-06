@@ -34,6 +34,7 @@ export const CATEGORIES = [
   "邏輯",
   "棋類",
   "數字",
+  "數學",
   "文字",
   "記憶",
   "街機",
@@ -719,6 +720,155 @@ const GAMES: Game[] = [
         </g>
         <circle cx="94" cy="90" r="2.6" fill="var(--text-faint)"/>
         <circle cx="94" cy="106" r="2.6" fill="var(--text-faint)"/>
+      </svg>`,
+  },
+  {
+    id: "kenken",
+    title: "算術數獨",
+    titleEn: "KenKen",
+    desc: "結合拉丁方格與四則運算的高階數學謎題。每行每列不重複，每個區塊都要算出指定目標。",
+    tags: ["數學", "邏輯", "高難度"],
+    accent: "#2dd4bf",
+    category: "數學",
+    type: "native",
+    to: "/games/kenken",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="12" y="12" width="96" height="96" rx="12" stroke="var(--accent)" stroke-width="3" opacity="0.65"/>
+        <g stroke="var(--text-faint)" stroke-width="1.6" opacity="0.6">
+          <path d="M36 12v96M60 12v96M84 12v96M12 36h96M12 60h96M12 84h96"/>
+        </g>
+        <g fill="var(--accent)" font-family="'Space Mono', ui-monospace, monospace" font-weight="800">
+          <text x="19" y="31" font-size="14">7+</text>
+          <text x="66" y="31" font-size="14">2÷</text>
+          <text x="19" y="78" font-size="14">12×</text>
+        </g>
+        <g fill="var(--text)" font-family="'Space Mono', ui-monospace, monospace" font-size="24" font-weight="800" text-anchor="middle">
+          <text x="48" y="58">3</text>
+          <text x="84" y="94" fill="var(--accent)">4</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "equation-maze",
+    title: "等式迷宮",
+    titleEn: "Equation Maze",
+    desc: "在數字與運算符的迷宮中走出相鄰路徑，讓整條算式精準等於目標值。",
+    tags: ["數學", "路徑", "心算"],
+    accent: "#f59e0b",
+    category: "數學",
+    type: "native",
+    to: "/games/equation-maze",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g stroke="var(--accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 82 H42 V58 H66 V36 H96"/>
+        </g>
+        <g fill="var(--ink-900)" stroke="var(--accent)" stroke-width="3">
+          <rect x="12" y="72" width="22" height="22" rx="6"/>
+          <rect x="36" y="48" width="22" height="22" rx="6"/>
+          <rect x="60" y="26" width="22" height="22" rx="6"/>
+          <rect x="84" y="26" width="22" height="22" rx="6"/>
+        </g>
+        <g fill="var(--text)" font-family="'Space Mono', ui-monospace, monospace" font-size="15" font-weight="900" text-anchor="middle">
+          <text x="23" y="88">8</text><text x="47" y="64">×</text><text x="71" y="42">3</text><text x="95" y="42">=</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "fraction-balance",
+    title: "分數天平",
+    titleEn: "Fraction Balance",
+    desc: "挑選分數卡並調整正負號，讓右側總和等於左側目標。困難模式會混入負分數與帶分數。",
+    tags: ["數學", "分數", "推理"],
+    accent: "#a78bfa",
+    category: "數學",
+    type: "native",
+    to: "/games/fraction-balance",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <path d="M60 18 V94 M28 94 H92" stroke="var(--text-faint)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M24 44 H96" stroke="var(--accent)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M34 44 L22 76 H46 Z M86 44 L74 76 H98 Z" fill="var(--accent)" fill-opacity="0.2" stroke="var(--accent)" stroke-width="3" stroke-linejoin="round"/>
+        <g fill="var(--text)" font-family="'Space Mono', ui-monospace, monospace" font-size="15" font-weight="900" text-anchor="middle">
+          <text x="34" y="70">3/4</text>
+          <text x="86" y="70">1/2</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "prime-hunter",
+    title: "質數獵人",
+    titleEn: "Prime Hunter",
+    desc: "根據質數、因數、半質數與質因數結構找出所有目標數字，不能漏選也不能錯選。",
+    tags: ["數學", "質數", "因數"],
+    accent: "#84cc16",
+    category: "數學",
+    type: "native",
+    to: "/games/prime-hunter",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g fill="var(--accent)" fill-opacity="0.22" stroke="var(--accent)" stroke-width="2.5">
+          <rect x="16" y="16" width="26" height="26" rx="7"/>
+          <rect x="47" y="16" width="26" height="26" rx="7"/>
+          <rect x="78" y="16" width="26" height="26" rx="7"/>
+          <rect x="16" y="47" width="26" height="26" rx="7"/>
+          <rect x="47" y="47" width="26" height="26" rx="7"/>
+          <rect x="78" y="47" width="26" height="26" rx="7"/>
+        </g>
+        <g fill="var(--text)" font-family="'Space Mono', ui-monospace, monospace" font-size="16" font-weight="900" text-anchor="middle">
+          <text x="29" y="35">7</text><text x="60" y="35" fill="var(--accent)">11</text><text x="91" y="35">12</text>
+          <text x="29" y="66">21</text><text x="60" y="66">25</text><text x="91" y="66" fill="var(--accent)">31</text>
+        </g>
+        <path d="M28 92 H92" stroke="var(--accent)" stroke-width="6" stroke-linecap="round"/>
+      </svg>`,
+  },
+  {
+    id: "countdown",
+    title: "倒數數字",
+    titleEn: "Countdown Numbers",
+    desc: "使用所有數字卡與整數四則運算，合併出 100–999 的目標值。比 24 點更長、更硬。",
+    tags: ["數學", "心算", "高難度"],
+    accent: "#38bdf8",
+    category: "數學",
+    type: "native",
+    to: "/games/countdown",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="16" y="18" width="88" height="84" rx="14" stroke="var(--accent)" stroke-width="3" opacity="0.7"/>
+        <text x="60" y="54" font-family="'Space Mono', ui-monospace, monospace" font-size="26" font-weight="900" text-anchor="middle" fill="var(--accent)">532</text>
+        <g fill="var(--text-faint)" font-family="'Space Mono', ui-monospace, monospace" font-size="14" font-weight="900" text-anchor="middle">
+          <text x="32" y="82">75</text><text x="58" y="82">6</text><text x="82" y="82">×</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "function-runner",
+    title: "座標射擊",
+    titleEn: "Function Runner",
+    desc: "調整直線或二次函數係數，讓曲線命中所有目標點並避開阻擋點。",
+    tags: ["數學", "代數", "座標"],
+    accent: "#fb7185",
+    category: "數學",
+    type: "native",
+    to: "/games/function-runner",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g stroke="var(--text-faint)" stroke-width="1.5" opacity="0.55">
+          <path d="M18 60h84M60 18v84M30 18v84M90 18v84M18 30h84M18 90h84"/>
+        </g>
+        <path d="M20 92 C38 76 44 36 60 36 C76 36 82 76 100 92" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" fill="none"/>
+        <g fill="var(--ink-900)" stroke="var(--accent)" stroke-width="4">
+          <circle cx="38" cy="72" r="6"/><circle cx="60" cy="36" r="6"/><circle cx="82" cy="72" r="6"/>
+        </g>
       </svg>`,
   },
   {
