@@ -28,6 +28,13 @@ const overlay = reactive({ open: false, title: "", sub: "" });
 const currentTokens = computed(() => (puzzle.value ? selectedTokens(puzzle.value, selected.value) : []));
 const currentValue = computed(() => evaluateTokens(currentTokens.value));
 const validSelection = computed(() => (puzzle.value ? isValidMazeSelection(puzzle.value, selected.value) : false));
+const mazeFontSize = computed(() => {
+  const n = puzzle.value?.size ?? 6;
+  if (n <= 5) return "2.25rem";
+  if (n === 6) return "2rem";
+  if (n === 7) return "1.7rem";
+  return "1.5rem";
+});
 
 function rng() {
   return makeRng(props.seed == null ? null : `${props.seed}:equation-maze:${effectiveDifficulty.value}`);
@@ -118,7 +125,13 @@ onMounted(generate);
         </div>
 
         <div class="board-wrap">
-          <div v-if="puzzle" class="maze-grid" :style="{ '--n': puzzle.size }" role="grid" :aria-label="`${puzzle.size}×${puzzle.size} 等式迷宮`">
+          <div
+            v-if="puzzle"
+            class="maze-grid"
+            :style="{ '--n': puzzle.size, '--maze-font': mazeFontSize }"
+            role="grid"
+            :aria-label="`${puzzle.size}×${puzzle.size} 等式迷宮`"
+          >
             <button
               v-for="(cell, i) in puzzle.cells"
               :key="i"
@@ -188,6 +201,7 @@ onMounted(generate);
 .maze-grid {
   display: grid;
   grid-template-columns: repeat(var(--n), 1fr);
+  grid-template-rows: repeat(var(--n), minmax(0, 1fr));
   width: min(88vw, 66vh, 560px);
   aspect-ratio: 1;
   gap: 0.35rem;
@@ -199,13 +213,21 @@ onMounted(generate);
 }
 .maze-cell {
   min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-radius: 10px;
   background: linear-gradient(180deg, var(--ink-800), var(--ink-900));
   border: 1px solid var(--line);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: clamp(0.86rem, calc(4.8vw / var(--n)), 1.35rem);
+  font-size: var(--maze-font);
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: 0;
+  overflow: hidden;
   cursor: pointer;
 }
 .maze-cell:disabled {
@@ -244,5 +266,14 @@ onMounted(generate);
 }
 .equation-readout.is-invalid {
   border-color: #ff5d6c;
+}
+@media (max-width: 560px) {
+  .maze-grid {
+    width: min(94vw, 560px);
+    gap: 0.28rem;
+  }
+  .maze-cell {
+    font-size: min(var(--maze-font), 1.35rem);
+  }
 }
 </style>
