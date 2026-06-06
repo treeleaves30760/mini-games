@@ -597,6 +597,65 @@ const GAMES: Game[] = [
       </svg>`,
   },
   {
+    id: "chess",
+    title: "國際象棋",
+    titleEn: "Chess",
+    desc: "完整合法手、升變、王車易位與過路兵。挑戰 rule-based alpha-beta AI。",
+    tags: ["棋類", "AI", "經典"],
+    accent: "#f2c94c",
+    category: "棋類",
+    type: "native",
+    to: "/games/chess",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="16" y="16" width="88" height="88" rx="10" fill="var(--accent)" fill-opacity="0.12" stroke="var(--accent)" stroke-width="2.4"/>
+        <g opacity="0.55">
+          <rect x="16" y="16" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+          <rect x="60" y="16" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+          <rect x="38" y="38" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+          <rect x="82" y="38" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+          <rect x="16" y="60" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+          <rect x="60" y="60" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+          <rect x="38" y="82" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+          <rect x="82" y="82" width="22" height="22" fill="var(--accent)" fill-opacity="0.45"/>
+        </g>
+        <g fill="var(--text)" font-family="Georgia, serif" font-size="36" font-weight="700" text-anchor="middle">
+          <text x="38" y="54">♞</text>
+          <text x="82" y="93" fill="var(--accent)">♕</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "shogi",
+    title: "日本將棋",
+    titleEn: "Shogi",
+    desc: "九路將棋，含持駒打入、升變與禁手檢查。對戰 rule-based 搜尋 AI。",
+    tags: ["棋類", "AI", "日本"],
+    accent: "#ff7a59",
+    category: "棋類",
+    type: "native",
+    to: "/games/shogi",
+    layout: "wide",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="14" y="14" width="92" height="92" rx="10" fill="var(--accent)" fill-opacity="0.12" stroke="var(--accent)" stroke-width="2.4"/>
+        <g stroke="var(--text-faint)" stroke-width="1.2" opacity="0.55">
+          <path d="M32 14v92M50 14v92M68 14v92M86 14v92M14 32h92M14 50h92M14 68h92M14 86h92"/>
+        </g>
+        <g transform="translate(34 34)">
+          <path d="M16 0 L30 8 L27 38 L3 38 L0 8 Z" fill="var(--text)" opacity="0.92"/>
+          <text x="15" y="27" font-family="'Noto Sans TC', sans-serif" font-size="18" font-weight="800" text-anchor="middle" fill="#18110c">歩</text>
+        </g>
+        <g transform="translate(64 62) rotate(180 16 19)">
+          <path d="M16 0 L30 8 L27 38 L3 38 L0 8 Z" fill="var(--accent)"/>
+          <text x="15" y="27" font-family="'Noto Sans TC', sans-serif" font-size="18" font-weight="800" text-anchor="middle" fill="#18110c">玉</text>
+        </g>
+      </svg>`,
+  },
+  {
     id: "tictactoe",
     title: "圈圈叉叉",
     titleEn: "Tic-Tac-Toe",
