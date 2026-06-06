@@ -24,6 +24,8 @@
     "wordnet-db": "^3.1.14"
   },
   "dependencies": {
-    "three": "^0.184.0"
+    "chess.js": "^1.4.0",
+    "three": "^0.184.0",
+    "tsshogi": "^2.3.3"
   }
 }
