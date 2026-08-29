@@ -1,11 +1,12 @@
 <script setup>
 import {
+  CHESS_LEVELS,
   CHESS_PIECES,
   chooseChessAIMove,
   createChessGame,
   getChessCells,
-  getChessDifficultyDepth,
   getChessLegalMoves,
+  getChessLevel,
   getChessStatus,
   oppositeChessSide,
   toChessMoveInput,
@@ -26,6 +27,7 @@ const selectedSquare = ref(null);
 const lastMove = ref(null);
 const promotionPrompt = ref(null);
 const aiThinking = ref(false);
+const aiProgress = ref(null);
 const humanColor = ref("w");
 const difficulty = ref("normal");
 const moveLog = ref([]);
@@ -34,6 +36,15 @@ const overlay = reactive({ open: false, title: "", sub: "" });
 
 let rng = makeRng(props.seed);
 let aiTimer = null;
+
+/* The deep levels can think for seconds, so the search runs in a Web Worker
+   and the board stays interactive. useBoardAI falls back to the main thread
+   where workers are unavailable. */
+const ai = useBoardAI({
+  createWorker: () => new Worker(new URL("../../workers/chess-ai.ts", import.meta.url), { type: "module" }),
+  compute: (payload, onProgress) =>
+    chooseChessAIMove(payload.fen, payload.aiColor, payload.difficulty, makeRng(payload.seed), { onProgress }),
+});
 
 const aiColor = computed(() => oppositeChessSide(humanColor.value));
 const boardCells = computed(() => {
@@ -58,9 +69,19 @@ const statusText = computed(() => {
   return game.value.isCheck() ? "你被將軍，請解危" : "輪到你走";
 });
 
+const activeLevel = computed(() => getChessLevel(difficulty.value));
+
 const engineText = computed(() => {
-  const depth = getChessDifficultyDepth(difficulty.value);
-  return `Alpha-beta ${depth} 層 · 手工評估`;
+  const level = activeLevel.value;
+  const quiescence = level.quiescence > 0 ? `＋吃子延伸 ${level.quiescence} 層` : "";
+  return `Alpha-beta ${level.depth} 層${quiescence} · 手工評估`;
+});
+
+const searchText = computed(() => {
+  const info = aiProgress.value;
+  if (!info) return aiThinking.value ? "搜尋中…" : "";
+  const nodes = info.nodes.toLocaleString("en-US");
+  return `第 ${info.depth} 層 · ${nodes} 節點 · ${(info.timeMs / 1000).toFixed(1)}s`;
 });
 
 watch(
@@ -135,22 +156,49 @@ function choosePromotion(piece) {
 function triggerAI() {
   if (game.value.isGameOver() || game.value.turn() !== aiColor.value) return;
   aiThinking.value = true;
-  clearTimeout(aiTimer);
-  aiTimer = setTimeout(() => {
-    const aiMove = chooseChessAIMove(game.value.fen(), aiColor.value, difficulty.value, rng);
-    if (aiMove) {
-      const applied = game.value.move({
-        from: aiMove.from,
-        to: aiMove.to,
-        promotion: aiMove.promotion || "q",
-      });
-      lastMove.value = { from: applied.from, to: applied.to };
-      moveLog.value = [...moveLog.value, `AI ${applied.san}`].slice(-8);
-      syncPosition();
+  aiProgress.value = null;
+  const started = Date.now();
+
+  ai.request(
+    {
+      fen: game.value.fen(),
+      aiColor: aiColor.value,
+      difficulty: difficulty.value,
+      seed: rng.int(1, 2_147_483_646),
+    },
+    {
+      onProgress: (info) => {
+        aiProgress.value = info;
+      },
+      onResult: (aiMove) => {
+        // Keep a beat of "thinking" so the fast levels do not flicker.
+        clearTimeout(aiTimer);
+        aiTimer = setTimeout(() => applyAIMove(aiMove), Math.max(0, 180 - (Date.now() - started)));
+      },
     }
-    aiThinking.value = false;
-    resolveGame();
-  }, 180);
+  );
+}
+
+function applyAIMove(aiMove) {
+  if (aiMove) {
+    aiProgress.value = aiMove;
+    const applied = game.value.move({
+      from: aiMove.from,
+      to: aiMove.to,
+      promotion: aiMove.promotion || "q",
+    });
+    lastMove.value = { from: applied.from, to: applied.to };
+    moveLog.value = [...moveLog.value, `AI ${applied.san}`].slice(-8);
+    syncPosition();
+  }
+  aiThinking.value = false;
+  resolveGame();
+}
+
+function stopAI() {
+  ai.cancel();
+  clearTimeout(aiTimer);
+  aiThinking.value = false;
 }
 
 function resolveGame() {
@@ -179,7 +227,8 @@ function resolveGame() {
 }
 
 function restart() {
-  clearTimeout(aiTimer);
+  stopAI();
+  aiProgress.value = null;
   game.value = createChessGame();
   selectedSquare.value = null;
   lastMove.value = null;
@@ -192,14 +241,18 @@ function restart() {
 }
 
 function setSide(side) {
-  if (aiThinking.value) return;
   humanColor.value = side;
   restart();
 }
 
 function setDifficulty(next) {
-  if (aiThinking.value) return;
+  if (difficulty.value === next) return;
   difficulty.value = next;
+  // A search already under way was started at the old level — redo it.
+  if (aiThinking.value) {
+    stopAI();
+    triggerAI();
+  }
 }
 
 function undoMove() {
@@ -233,7 +286,9 @@ onMounted(() => {
   } catch (_) {}
 });
 
-onBeforeUnmount(() => clearTimeout(aiTimer));
+onBeforeUnmount(() => {
+  stopAI();
+});
 </script>
 
 <template>
@@ -258,7 +313,7 @@ onBeforeUnmount(() => clearTimeout(aiTimer));
           </div>
           <div class="chip">
             <span class="chip__label">AI</span>
-            <span class="chip__value">{{ difficulty === 'hard' ? '強' : difficulty === 'normal' ? '中' : '輕' }}</span>
+            <span class="chip__value">{{ activeLevel.short }}</span>
           </div>
         </div>
 
@@ -326,12 +381,21 @@ onBeforeUnmount(() => clearTimeout(aiTimer));
 
         <div class="panel__group">
           <span class="panel__legend">AI 難度</span>
-          <div class="seg">
-            <button :aria-pressed="difficulty === 'easy'" @click="setDifficulty('easy')">輕量</button>
-            <button :aria-pressed="difficulty === 'normal'" @click="setDifficulty('normal')">標準</button>
-            <button :aria-pressed="difficulty === 'hard'" @click="setDifficulty('hard')">強化</button>
+          <div class="levels">
+            <button
+              v-for="level in CHESS_LEVELS"
+              :key="level.id"
+              class="level"
+              :aria-pressed="difficulty === level.id"
+              @click="setDifficulty(level.id)"
+            >
+              <span class="level__name">{{ level.label }}</span>
+              <span class="level__depth">{{ level.depth }} 層</span>
+            </button>
           </div>
-          <p class="hint">{{ engineText }}</p>
+          <p class="hint">{{ activeLevel.note }}</p>
+          <p class="hint hint--engine">{{ engineText }}</p>
+          <p class="search-line" v-if="searchText">{{ searchText }}</p>
         </div>
 
         <div class="panel__group">
@@ -500,6 +564,54 @@ onBeforeUnmount(() => clearTimeout(aiTimer));
   font-family: Georgia, serif;
   font-size: 2rem;
   cursor: pointer;
+}
+.levels {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  border: 1px solid var(--line);
+}
+.level {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: calc(var(--r-sm) - 4px);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.level:hover {
+  color: var(--text);
+}
+.level[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--glow-sm);
+}
+.level__name {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.level__depth {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.hint--engine {
+  font-size: 0.82rem;
+  color: var(--text-faint);
+}
+.search-line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: color-mix(in oklab, var(--accent) 80%, var(--text));
 }
 .move-list {
   display: grid;

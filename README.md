@@ -9,7 +9,7 @@ It currently features **36 games** plus a **Daily Challenge**, grouped by catego
 | Category | Games |
 | --- | --- |
 | Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents |
-| Board (vs AI) | Gomoku (with Renju forbidden-move rules), Reversi, Tic-Tac-Toe, Dots & Boxes |
+| Board (vs AI) | Gomoku (with Renju forbidden-move rules), Reversi, Tic-Tac-Toe, Dots & Boxes, Chess, Shogi (the last two offer five AI levels, 1–5 ply — see below) |
 | Numbers | 2048, 15 Puzzle, Make 24 (variable target), Mastermind |
 | Word | Word Guess, Japanese Word Guess (hiragana Wordle of 58 words; on solving, reveals each word's Chinese/English meaning, a usage note, and two example sentences, with 🔊 audio playback via the Web Speech API), Word Search |
 | Memory | Memory, Simon |
@@ -22,6 +22,33 @@ It currently features **36 games** plus a **Daily Challenge**, grouped by catego
 `/daily` uses **the current date as a seed** every day to pick one game from a curated, reproducible set of puzzles and generate that day's challenge — so **every player in the world gets the same puzzle on the same day**. Completing it extends your **streak**, and you can share your result with one tap.
 
 The core is the shared seeded-RNG utility `app/utils/rng.ts` (`makeRng(seed)` / `todaySeed()`). Any game can join the daily rotation simply by using it in place of `Math.random`, accepting `seed` / `daily` props, and emitting `solved` when the player wins.
+
+### Board-Game AI Levels
+
+Chess and Shogi share one search design in `app/games/chess.ts` and `app/games/shogi.ts`: a
+rule-based negamax (alpha-beta) with iterative deepening, a transposition table, killer/history
+move ordering, and a capture-driven quiescence search on the top two levels.
+
+| Level | Depth | Quiescence | Typical reply |
+| --- | --- | --- | --- |
+| 輕量 Light | 1 ply | — | instant |
+| 標準 Standard | 2 ply | — | instant |
+| 強化 Strong | 3 ply | — | instant |
+| 專家 Expert | 4 ply | 4 ply | well under a second |
+| 大師 Master | 5 ply | 6 ply | a fraction of a second, up to a few seconds in dense positions |
+
+Two budgets bound the search: a node count and a wall clock. The clock is the one that matters — a
+Shogi position where both sides hold several pieces in hand generates 150+ legal drops per node, so
+the same node count can cost 100x more time than in the opening. Whichever budget runs out first
+stops the search and the deepest *completed* iteration is played, so the AI always answers.
+
+The search runs in a **Web Worker** (`app/workers/`), so the board stays interactive while the deep
+levels think, and the panel reports live progress (depth, nodes, elapsed). Where workers are
+unavailable, `useBoardAI` falls back to computing on the main thread.
+
+Chess does not search on `chess.js`: generating moves there also builds SAN strings, which is far
+too slow for deep search. The AI uses its own 0x88 board, verified against `chess.js` and the
+published perft counts in `tests/games/chess.test.ts`. Shogi keeps `tsshogi` as the rules authority.
 
 ## Features
 
@@ -76,9 +103,10 @@ Preview the static output: `pnpm generate && pnpm dlx serve .output/public`
 │   │   ├── index.vue              # home page (hero + category filter + game wall)
 │   │   ├── daily.vue              # Daily Challenge (date-picked game, seeded, streak tracking)
 │   │   └── games/                 # one route per game (snake / sudoku / minesweeper / gomoku ...)
-│   └── utils/
-│       ├── sudoku.ts              # Sudoku generator / solver
-│       └── rng.ts                 # seeded RNG (makeRng / todaySeed) — the basis of the Daily Challenge
+│   ├── utils/
+│   │   ├── sudoku.ts              # Sudoku generator / solver
+│   │   └── rng.ts                 # seeded RNG (makeRng / todaySeed) — the basis of the Daily Challenge
+│   └── workers/                   # Web Workers: chess-ai.ts / shogi-ai.ts (deep search off the main thread)
 ├── public/favicon.svg
 └── .github/workflows/deploy.yml   # GitHub Pages automatic deployment
 ```

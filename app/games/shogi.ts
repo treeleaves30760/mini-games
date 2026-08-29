@@ -1,6 +1,8 @@
 /* Japanese shogi — legality powered by tsshogi, AI kept framework-free.
    tsshogi validates the hard rules; this module generates candidates and
-   applies a deterministic rule-based alpha-beta evaluator around it. */
+   applies a deterministic rule-based negamax (alpha-beta) evaluator around
+   it: iterative deepening, transposition table, killer/history ordering and
+   a capture-only quiescence search for the higher difficulty levels. */
 
 import {
   Color,
@@ -24,7 +26,25 @@ import type { Rng } from "~/utils/rng";
 
 export { Color, PieceType, type Move, type Position, type Square } from "tsshogi";
 
-export type ShogiDifficulty = "easy" | "normal" | "hard";
+export type ShogiDifficulty = "easy" | "normal" | "hard" | "expert" | "master";
+
+export type ShogiLevel = {
+  id: ShogiDifficulty;
+  /** Button label. */
+  label: string;
+  /** One-character badge. */
+  short: string;
+  /** Maximum iterative-deepening depth (plies). */
+  depth: number;
+  /** Maximum quiescence extension (plies); 0 disables it. */
+  quiescence: number;
+  /** Node budget — iterations after the first are abandoned once exceeded. */
+  maxNodes: number;
+  /** Wall-clock budget in ms — the real safety net (see SHOGI_LEVELS). */
+  timeLimitMs: number;
+  /** Short description shown under the selector. */
+  note: string;
+};
 
 export type ShogiCell = {
   square: Square;
@@ -46,9 +66,42 @@ export type ShogiAIMove = {
   usi: string;
   score: number;
   nodes: number;
+  /** Deepest fully completed search depth. */
+  depth: number;
+  timeMs: number;
+};
+
+export type ShogiSearchOptions = {
+  /** Override the level's node budget. */
+  maxNodes?: number;
+  /** Override the level's quiescence depth. */
+  quiescence?: number;
+  /** Override the level's wall-clock cap (Infinity to search uncapped). */
+  timeLimitMs?: number;
+  /** Called after every completed iteration. */
+  onProgress?: (info: ShogiAIMove) => void;
 };
 
 const MATE_SCORE = 100_000;
+const MATE_BOUND = MATE_SCORE - 1_000;
+const MAX_PLY = 64;
+const TT_EXACT = 0;
+const TT_LOWER = 1;
+const TT_UPPER = 2;
+
+/* Depth is the headline setting; the two budgets are safety nets. A node
+   budget alone is not enough: a position where both sides hold several pieces
+   in hand generates 150+ legal drops per node and each one costs a full
+   tsshogi validation, so the same node count can take 100x longer than in the
+   opening. The wall-clock limit is what keeps the AI responsive there — it
+   returns the deepest iteration that actually finished. */
+export const SHOGI_LEVELS: readonly ShogiLevel[] = [
+  { id: "easy", label: "輕量", short: "輕", depth: 1, quiescence: 0, maxNodes: 4_000, timeLimitMs: 2_000, note: "只看一手，適合熟悉規則" },
+  { id: "normal", label: "標準", short: "中", depth: 2, quiescence: 0, maxNodes: 12_000, timeLimitMs: 2_000, note: "看到你的回應" },
+  { id: "hard", label: "強化", short: "強", depth: 3, quiescence: 0, maxNodes: 40_000, timeLimitMs: 3_000, note: "三層搜尋，反應仍即時" },
+  { id: "expert", label: "專家", short: "專", depth: 4, quiescence: 4, maxNodes: 150_000, timeLimitMs: 5_000, note: "四層＋吃子延伸，約需 1 秒" },
+  { id: "master", label: "大師", short: "師", depth: 5, quiescence: 6, maxNodes: 450_000, timeLimitMs: 9_000, note: "五層＋吃子延伸，複雜局面需要數秒" },
+];
 
 export const SHOGI_HAND_ORDER: PieceType[] = [
   PieceType.ROOK,
@@ -108,10 +161,12 @@ export function oppositeShogiColor(color: Color): Color {
   return reverseColor(color);
 }
 
+export function getShogiLevel(difficulty: ShogiDifficulty): ShogiLevel {
+  return SHOGI_LEVELS.find((level) => level.id === difficulty) ?? SHOGI_LEVELS[1];
+}
+
 export function getShogiDifficultyDepth(difficulty: ShogiDifficulty): number {
-  if (difficulty === "easy") return 1;
-  if (difficulty === "hard") return 3;
-  return 2;
+  return getShogiLevel(difficulty).depth;
 }
 
 export function shogiPieceLabel(type: PieceType): string {
@@ -159,54 +214,59 @@ function canPromoteMove(piece: Piece, from: Square, to: Square): boolean {
   );
 }
 
-function addLegalMove(position: Position, move: Move | null, seen: Set<string>, moves: Move[]): void {
-  if (!move || seen.has(move.usi)) return;
-  if (!position.isValidMove(move)) return;
-  seen.add(move.usi);
-  moves.push(move);
+function addLegalMove(position: Position, move: Move, moves: Move[]): void {
+  if (position.isValidMove(move)) moves.push(move);
 }
 
-export function getLegalShogiMoves(position: Position): Move[] {
+/* Candidate generation walks each piece's movable directions and lets tsshogi
+   validate the result (pins, drop rules, pawn-drop mate). With `capturesOnly`
+   the walk skips quiet moves and drops entirely — used by quiescence search. */
+function generateShogiMoves(position: Position, capturesOnly: boolean): Move[] {
   const moves: Move[] = [];
-  const seen = new Set<string>();
+  const color = position.color;
 
-  for (const from of position.board.listSquaresByColor(position.color)) {
-    const piece = position.board.at(from);
-    if (!piece) continue;
-
+  for (const from of position.board.listSquaresByColor(color)) {
+    const piece = position.board.at(from) as Piece;
     for (const direction of movableDirections(piece)) {
-      const moveType = resolveMoveType(piece, direction);
-      if (!moveType) continue;
       const delta = directionToDeltaMap[direction];
-      const maxStep = moveType === MoveType.LONG ? 8 : 1;
+      const maxStep = resolveMoveType(piece, direction) === MoveType.LONG ? 8 : 1;
 
       for (let step = 1; step <= maxStep; step++) {
         const to = Square.newByXY(from.x + delta.x * step, from.y + delta.y * step);
         if (!to.valid) break;
 
         const occupant = position.board.at(to);
-        if (occupant?.color === position.color) break;
-
-        const base = position.createMove(from, to);
-        addLegalMove(position, base, seen, moves);
-        if (base && canPromoteMove(piece, from, to)) {
-          addLegalMove(position, base.withPromote(), seen, moves);
+        if (occupant?.color === color) break;
+        if (occupant || !capturesOnly) {
+          const base = position.createMove(from, to) as Move;
+          addLegalMove(position, base, moves);
+          if (canPromoteMove(piece, from, to)) addLegalMove(position, base.withPromote(), moves);
         }
         if (occupant) break;
       }
     }
   }
 
-  const hand = position.hand(position.color);
+  if (capturesOnly) return moves;
+
+  const hand = position.hand(color);
   for (const type of handPieceTypes) {
     if (hand.count(type) <= 0) continue;
     for (const to of Square.all) {
       if (position.board.at(to)) continue;
-      addLegalMove(position, position.createMove(type, to), seen, moves);
+      addLegalMove(position, position.createMove(type, to) as Move, moves);
     }
   }
 
   return moves;
+}
+
+export function getLegalShogiMoves(position: Position): Move[] {
+  return generateShogiMoves(position, false);
+}
+
+export function getShogiCaptureMoves(position: Position): Move[] {
+  return generateShogiMoves(position, true);
 }
 
 export function formatShogiMove(position: Position, move: Move): string {
@@ -217,124 +277,265 @@ export function isShogiGameOver(position: Position): boolean {
   return getLegalShogiMoves(position).length === 0;
 }
 
-function shogiMoveOrderScore(move: Move): number {
-  let score = 0;
-  if (move.capturedPieceType) score += 10_000 + SHOGI_VALUES[move.capturedPieceType];
-  if (move.promote) score += 900;
-  if (!(move.from instanceof Square)) score += 40;
-  score += SHOGI_VALUES[move.pieceType] / 100;
-  return score;
-}
-
-function orderedShogiMoves(position: Position): Move[] {
-  return getLegalShogiMoves(position).sort((a, b) => shogiMoveOrderScore(b) - shogiMoveOrderScore(a));
-}
-
 function boardProgress(piece: Piece, square: Square): number {
   return piece.color === Color.BLACK ? 8 - square.y : square.y;
 }
 
-export function evaluateShogi(position: Position, aiColor: Color): number {
+/** Static evaluation from `color`'s point of view (material, advancement,
+    centralisation, pieces in hand and a small check penalty). */
+export function evaluateShogi(position: Position, color: Color): number {
   let score = 0;
   for (const square of position.board.listNonEmptySquares()) {
-    const piece = position.board.at(square);
-    if (!piece) continue;
-    const sign = piece.color === aiColor ? 1 : -1;
+    const piece = position.board.at(square) as Piece;
+    const sign = piece.color === color ? 1 : -1;
     const progress = boardProgress(piece, square);
     const center = 4 - Math.abs(square.x - 4);
     score += sign * (SHOGI_VALUES[piece.type] + progress * 6 + center * 3);
   }
 
-  for (const color of [Color.BLACK, Color.WHITE]) {
-    const sign = color === aiColor ? 1 : -1;
-    const hand = position.hand(color);
-    for (const { type, count } of hand.counts) {
+  for (const side of [Color.BLACK, Color.WHITE]) {
+    const sign = side === color ? 1 : -1;
+    for (const { type, count } of position.hand(side).counts) {
       score += sign * count * Math.round(SHOGI_VALUES[type] * 0.92);
     }
   }
 
   if (position.checked) {
-    score += position.color === aiColor ? -90 : 90;
+    score += position.color === color ? -90 : 90;
   }
   return score;
 }
 
-type SearchStats = { nodes: number; maxNodes: number };
+/* ---------------------------------------------------------------------- */
+/* Search                                                                  */
+/* ---------------------------------------------------------------------- */
 
-function alphaBetaShogi(
+type TTEntry = { depth: number; score: number; flag: number; usi: string };
+
+type SearchContext = {
+  nodes: number;
+  maxNodes: number;
+  deadline: number;
+  iteration: number;
+  aborted: boolean;
+  qdepth: number;
+  killers: string[][];
+  history: Map<string, number>;
+  tt: Map<string, TTEntry>;
+};
+
+type RootMove = { move: Move; score: number };
+
+/* Budget checks never abort the first iteration, so a move always exists. */
+function outOfBudget(ctx: SearchContext): boolean {
+  if (ctx.iteration <= 1) return false;
+  if (ctx.nodes >= ctx.maxNodes || ((ctx.nodes & 255) === 0 && Date.now() >= ctx.deadline)) {
+    ctx.aborted = true;
+  }
+  return ctx.aborted;
+}
+
+/* Mate scores are stored relative to the node so they stay valid when the same
+   position is reached at a different ply. */
+function mateAdjust(score: number, plyDelta: number): number {
+  return Math.abs(score) >= MATE_BOUND ? score + Math.sign(score) * plyDelta : score;
+}
+
+function recordKiller(killers: string[], usi: string): void {
+  if (killers[0] === usi) return;
+  killers[1] = killers[0];
+  killers[0] = usi;
+}
+
+function shogiMoveOrderScore(
+  move: Move,
+  ttMove: string | undefined,
+  killers: string[],
+  history: Map<string, number>
+): number {
+  if (move.usi === ttMove) return 1_000_000;
+  let score = 0;
+  if (move.capturedPieceType) {
+    score += 10_000 + SHOGI_VALUES[move.capturedPieceType] * 10 - SHOGI_VALUES[move.pieceType] / 10;
+  }
+  if (move.promote) score += 900;
+  if (killers.includes(move.usi)) score += 5_000;
+  score += Math.min(history.get(move.usi) ?? 0, 4_000);
+  if (typeof move.from === "string") score += 40;
+  score += SHOGI_VALUES[move.pieceType] / 100;
+  return score;
+}
+
+function orderShogiMoves(
+  moves: Move[],
+  ttMove: string | undefined,
+  killers: string[],
+  history: Map<string, number>
+): Move[] {
+  const scored = moves.map((move) => ({ move, key: shogiMoveOrderScore(move, ttMove, killers, history) }));
+  scored.sort((a, b) => b.key - a.key);
+  return scored.map((entry) => entry.move);
+}
+
+function quiescenceShogi(
+  position: Position,
+  alpha: number,
+  beta: number,
+  ply: number,
+  qdepth: number,
+  ctx: SearchContext
+): number {
+  if (outOfBudget(ctx)) return 0;
+  ctx.nodes++;
+
+  let moves: Move[];
+  let best: number;
+  if (position.checked) {
+    // In check: every legal reply is an evasion — no stand-pat allowed.
+    moves = getLegalShogiMoves(position);
+    if (moves.length === 0) return -MATE_SCORE + ply;
+    if (qdepth <= 0) return evaluateShogi(position, position.color);
+    moves = orderShogiMoves(moves, undefined, ctx.killers[ply], ctx.history);
+    best = -Infinity;
+  } else {
+    best = evaluateShogi(position, position.color);
+    if (qdepth <= 0 || best >= beta) return best;
+    if (best > alpha) alpha = best;
+    moves = orderShogiMoves(getShogiCaptureMoves(position), undefined, ctx.killers[ply], ctx.history);
+  }
+
+  for (const move of moves) {
+    position.doMove(move, { ignoreValidation: true });
+    const score = -quiescenceShogi(position, -beta, -alpha, ply + 1, qdepth - 1, ctx);
+    position.undoMove(move);
+    if (ctx.aborted) return 0;
+    if (score > best) best = score;
+    if (score > alpha) alpha = score;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+function negamaxShogi(
   position: Position,
   depth: number,
   alpha: number,
   beta: number,
-  aiColor: Color,
-  stats: SearchStats
+  ply: number,
+  ctx: SearchContext
 ): number {
-  stats.nodes++;
-  const moves = orderedShogiMoves(position);
-  if (moves.length === 0) {
-    return position.color === aiColor ? -MATE_SCORE + stats.nodes : MATE_SCORE - stats.nodes;
-  }
-  if (depth <= 0 || stats.nodes >= stats.maxNodes) {
-    return evaluateShogi(position, aiColor);
+  if (outOfBudget(ctx)) return 0;
+  ctx.nodes++;
+
+  if (depth <= 0) {
+    if (ctx.qdepth > 0) return quiescenceShogi(position, alpha, beta, ply, ctx.qdepth, ctx);
+    if (position.checked && getLegalShogiMoves(position).length === 0) return -MATE_SCORE + ply;
+    return evaluateShogi(position, position.color);
   }
 
-  const maximizing = position.color === aiColor;
-  if (maximizing) {
-    let best = -Infinity;
-    for (const move of moves) {
-      if (!position.doMove(move)) continue;
-      best = Math.max(best, alphaBetaShogi(position, depth - 1, alpha, beta, aiColor, stats));
-      position.undoMove(move);
-      alpha = Math.max(alpha, best);
-      if (beta <= alpha || stats.nodes >= stats.maxNodes) break;
+  const key = position.sfen;
+  const entry = ctx.tt.get(key);
+  if (entry && entry.depth >= depth) {
+    const score = mateAdjust(entry.score, -ply);
+    if (
+      entry.flag === TT_EXACT ||
+      (entry.flag === TT_LOWER && score >= beta) ||
+      (entry.flag === TT_UPPER && score <= alpha)
+    ) {
+      return score;
     }
-    return best;
   }
 
-  let best = Infinity;
+  const killers = ctx.killers[ply];
+  const moves = orderShogiMoves(getLegalShogiMoves(position), entry?.usi, killers, ctx.history);
+  if (moves.length === 0) return -MATE_SCORE + ply;
+
+  let best = -Infinity;
+  let bestUsi = "";
+  let flag = TT_UPPER;
   for (const move of moves) {
-    if (!position.doMove(move)) continue;
-    best = Math.min(best, alphaBetaShogi(position, depth - 1, alpha, beta, aiColor, stats));
+    position.doMove(move, { ignoreValidation: true });
+    const score = -negamaxShogi(position, depth - 1, -beta, -alpha, ply + 1, ctx);
     position.undoMove(move);
-    beta = Math.min(beta, best);
-    if (beta <= alpha || stats.nodes >= stats.maxNodes) break;
+    if (ctx.aborted) return 0;
+
+    if (score > best) {
+      best = score;
+      bestUsi = move.usi;
+    }
+    if (score > alpha) {
+      alpha = score;
+      flag = TT_EXACT;
+    }
+    if (alpha >= beta) {
+      flag = TT_LOWER;
+      if (!move.capturedPieceType) {
+        recordKiller(killers, move.usi);
+        ctx.history.set(move.usi, (ctx.history.get(move.usi) ?? 0) + depth * depth);
+      }
+      break;
+    }
   }
+
+  ctx.tt.set(key, { depth, score: mateAdjust(best, ply), flag, usi: bestUsi });
   return best;
+}
+
+/* One iteration at the root. Returns false when the budget ran out midway (the
+   caller then keeps the previous iteration's answer). Root moves end up sorted
+   best-first, which is also the move ordering for the next iteration. */
+function searchShogiRoot(position: Position, rootMoves: RootMove[], depth: number, ctx: SearchContext): boolean {
+  let alpha = -Infinity;
+  for (const root of rootMoves) {
+    position.doMove(root.move, { ignoreValidation: true });
+    const score = -negamaxShogi(position, depth - 1, -Infinity, -alpha, 1, ctx);
+    position.undoMove(root.move);
+    if (ctx.aborted) return false;
+    root.score = score;
+    if (score > alpha) alpha = score;
+  }
+  rootMoves.sort((a, b) => b.score - a.score);
+  return true;
 }
 
 export function chooseShogiAIMove(
   sfen: string,
   difficulty: ShogiDifficulty = "normal",
-  rng?: Rng
+  rng?: Rng,
+  options: ShogiSearchOptions = {}
 ): ShogiAIMove | null {
   const position = Position.newBySFEN(sfen);
   if (!position) return null;
 
-  const aiColor = position.color;
-  const depth = getShogiDifficultyDepth(difficulty);
-  const stats: SearchStats = {
+  const rootMoves: RootMove[] = getLegalShogiMoves(position).map((move) => ({ move, score: 0 }));
+  if (rootMoves.length === 0) return null;
+  // Shuffling first makes ties between equally good moves land on a random one.
+  rng?.shuffle(rootMoves);
+
+  const level = getShogiLevel(difficulty);
+  const started = Date.now();
+  const ctx: SearchContext = {
     nodes: 0,
-    maxNodes: difficulty === "hard" ? 28_000 : difficulty === "normal" ? 9_000 : 2_500,
+    maxNodes: options.maxNodes ?? level.maxNodes,
+    deadline: started + (options.timeLimitMs ?? level.timeLimitMs),
+    iteration: 0,
+    aborted: false,
+    qdepth: options.quiescence ?? level.quiescence,
+    killers: Array.from({ length: MAX_PLY }, () => []),
+    history: new Map(),
+    tt: new Map(),
   };
-  const moves = orderedShogiMoves(position);
-  if (moves.length === 0) return null;
 
-  let bestScore = -Infinity;
-  let bestMoves: Move[] = [];
-  for (const move of moves) {
-    if (!position.doMove(move)) continue;
-    const score = alphaBetaShogi(position, depth - 1, -Infinity, Infinity, aiColor, stats);
-    position.undoMove(move);
-    if (score > bestScore) {
-      bestScore = score;
-      bestMoves = [move];
-    } else if (score === bestScore) {
-      bestMoves.push(move);
-    }
-    if (stats.nodes >= stats.maxNodes) break;
+  let result: ShogiAIMove | null = null;
+  for (let depth = 1; depth <= level.depth; depth++) {
+    ctx.iteration = depth;
+    // Never start an iteration the clock cannot pay for.
+    if (depth > 1 && Date.now() >= ctx.deadline) break;
+    if (!searchShogiRoot(position, rootMoves, depth, ctx)) break;
+    const best = rootMoves[0];
+    result = { usi: best.move.usi, score: best.score, nodes: ctx.nodes, depth, timeMs: Date.now() - started };
+    options.onProgress?.(result);
+    if (Math.abs(best.score) >= MATE_BOUND) break;
   }
-
-  const best = bestMoves.length > 1 && rng ? rng.pick(bestMoves) : bestMoves[0];
-  if (!best) return null;
-  return { usi: best.usi, score: bestScore, nodes: stats.nodes };
+  return result;
 }
