@@ -53,17 +53,11 @@ watch(effectiveDifficulty, generate);
 
 function canTap(index) {
   if (!puzzle.value || won.value) return false;
-  const cell = puzzle.value.cells[index];
-  if (!selected.value.length) return cell.kind === "number";
+  // Tapping the last selected cell steps back; anything else must extend the walk legally
+  // (start on a number, alternate kinds, orthogonal step, no revisit) per the shared rules.
   const last = selected.value[selected.value.length - 1];
   if (last === index) return true;
-  if (selected.value.includes(index)) return false;
-  const expected = selected.value.length % 2 === 0 ? "number" : "op";
-  const lr = Math.floor(last / puzzle.value.size);
-  const lc = last % puzzle.value.size;
-  const r = Math.floor(index / puzzle.value.size);
-  const c = index % puzzle.value.size;
-  return cell.kind === expected && Math.abs(lr - r) + Math.abs(lc - c) === 1;
+  return isValidMazeSelection(puzzle.value, [...selected.value, index]);
 }
 
 function tapCell(index) {

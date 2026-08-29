@@ -39,6 +39,24 @@ export const FUNCTION_RUNNER_DIFFICULTIES: FunctionRunnerDifficulty[] = [
   { key: "expert", label: "專家", kind: "quadratic", range: 10, targets: 4, blockers: 3 },
 ];
 
+/**
+ * How far the +/- buttons let the player push each coefficient. The component
+ * clamps to these values, so they bound the player's choice space: a round is
+ * only solvable if its hidden solution stays inside them.
+ */
+export const FUNCTION_RUNNER_COEFFICIENT_LIMITS: Record<keyof FunctionCoefficients, number> = { a: 3, b: 8, c: 8 };
+
+/**
+ * Coefficient values a hidden solution may use, per curve kind. Deliberately a
+ * subset of FUNCTION_RUNNER_COEFFICIENT_LIMITS so the curves stay readable.
+ */
+const SOLUTION_A: Record<FunctionKind, number[]> = { line: [0], quadratic: [-2, -1, 1, 2] };
+const SOLUTION_B: Record<FunctionKind, number[]> = { line: [-3, -2, -1, 1, 2, 3], quadratic: [-3, -2, -1, 0, 1, 2, 3] };
+const SOLUTION_C = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
+
+/** Targets sit on non-zero xs with |x| <= 5 so their coordinates are easy to read off the grid. */
+const TARGET_X_LIMIT = 5;
+
 export function getFunctionRunnerDifficulty(key: string): FunctionRunnerDifficulty {
   return FUNCTION_RUNNER_DIFFICULTIES.find((d) => d.key === key) ?? FUNCTION_RUNNER_DIFFICULTIES[1];
 }
@@ -48,56 +66,52 @@ export function evaluateFunction(kind: FunctionKind, coeffs: FunctionCoefficient
   return coeffs.a * x * x + coeffs.b * x + coeffs.c;
 }
 
-function uniqueXs(rng: Rng, count: number, range: number): number[] {
-  const xs = Array.from({ length: range * 2 + 1 }, (_, i) => i - range).filter((x) => x !== 0);
-  rng.shuffle(xs);
-  return xs.slice(0, count).sort((a, b) => a - b);
+/** Candidate target xs whose y on this curve is still on the visible board. */
+function targetXsOnBoard(kind: FunctionKind, coeffs: FunctionCoefficients, range: number): number[] {
+  const limit = Math.min(TARGET_X_LIMIT, range);
+  const xs: number[] = [];
+  for (let x = -limit; x <= limit; x++) {
+    if (x !== 0 && Math.abs(evaluateFunction(kind, coeffs, x)) <= range) xs.push(x);
+  }
+  return xs;
 }
 
-function pointKey(p: Point): string {
-  return `${p.x},${p.y}`;
+/** Every curve the generator may draw for a difficulty: those with room for all of its targets. */
+function solutionPool(difficulty: FunctionRunnerDifficulty): FunctionCoefficients[] {
+  const pool: FunctionCoefficients[] = [];
+  for (const a of SOLUTION_A[difficulty.kind]) {
+    for (const b of SOLUTION_B[difficulty.kind]) {
+      for (const c of SOLUTION_C) {
+        const coeffs = { a, b, c };
+        if (targetXsOnBoard(difficulty.kind, coeffs, difficulty.range).length >= difficulty.targets) pool.push(coeffs);
+      }
+    }
+  }
+  return pool;
 }
 
+/**
+ * Build the round from its answer: draw a curve, put the targets on it and the
+ * blockers off it. Every round is therefore solvable with the curve it was built
+ * from and always has exactly the target/blocker counts of its difficulty.
+ */
 export function generateFunctionRunnerPuzzle(rng: Rng, difficultyKey = "normal"): FunctionRunnerPuzzle {
   const difficulty = getFunctionRunnerDifficulty(difficultyKey);
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const coeffs: FunctionCoefficients =
-      difficulty.kind === "line"
-        ? { a: 0, b: rng.int(-3, 3) || 1, c: rng.int(-5, 5) }
-        : { a: rng.pick([-2, -1, 1, 2]), b: rng.int(-3, 3), c: rng.int(-5, 5) };
-    const xs = uniqueXs(rng, difficulty.targets, Math.min(5, difficulty.range));
-    const targets = xs.map((x) => ({ x, y: evaluateFunction(difficulty.kind, coeffs, x) }));
-    if (targets.some((p) => Math.abs(p.y) > difficulty.range)) continue;
+  const { kind, range } = difficulty;
+  const solution = rng.pick(solutionPool(difficulty));
+  const xs = rng.shuffle(targetXsOnBoard(kind, solution, range)).slice(0, difficulty.targets).sort((a, b) => a - b);
+  const targets = xs.map((x) => ({ x, y: evaluateFunction(kind, solution, x) }));
 
-    const used = new Set(targets.map(pointKey));
-    const blockers: Point[] = [];
-    let guard = 0;
-    while (blockers.length < difficulty.blockers && guard++ < 200) {
-      const p = { x: rng.int(-difficulty.range, difficulty.range), y: rng.int(-difficulty.range, difficulty.range) };
-      if (used.has(pointKey(p))) continue;
-      if (evaluateFunction(difficulty.kind, coeffs, p.x) === p.y) continue;
-      used.add(pointKey(p));
-      blockers.push(p);
+  // Cells the solution curve misses can neither coincide with a target nor block the answer.
+  const offCurve: Point[] = [];
+  for (let x = -range; x <= range; x++) {
+    for (let y = -range; y <= range; y++) {
+      if (evaluateFunction(kind, solution, x) !== y) offCurve.push({ x, y });
     }
-
-    return {
-      difficulty: difficulty.key,
-      kind: difficulty.kind,
-      range: difficulty.range,
-      solution: coeffs,
-      targets,
-      blockers,
-    };
   }
+  const blockers = rng.shuffle(offCurve).slice(0, difficulty.blockers);
 
-  return {
-    difficulty: difficulty.key,
-    kind: difficulty.kind,
-    range: difficulty.range,
-    solution: difficulty.kind === "line" ? { a: 0, b: 1, c: 0 } : { a: 1, b: 0, c: 0 },
-    targets: difficulty.kind === "line" ? [{ x: -2, y: -2 }, { x: 3, y: 3 }] : [{ x: -2, y: 4 }, { x: 0, y: 0 }, { x: 2, y: 4 }],
-    blockers: [],
-  };
+  return { difficulty: difficulty.key, kind, range, solution, targets, blockers };
 }
 
 export function hitsPoint(kind: FunctionKind, coeffs: FunctionCoefficients, point: Point): boolean {

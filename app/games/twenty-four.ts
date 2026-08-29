@@ -242,10 +242,10 @@ export function genPuzzle(rng: Rng, mode = "mix"): Puzzle {
     const sol = solveFor(nums, tr);
     if (sol) return { nums, solution: sol, target: goal };
   }
-  const fb = FALLBACKS[goal] ?? FALLBACKS[24];
-  return {
-    nums: fb.nums,
-    solution: fb.solution,
-    target: FALLBACKS[goal] ? goal : 24,
-  };
+  // Practically unreachable: every target is reachable by >= 64% of random
+  // 1-9 draws (see the exhaustive test), so 600 misses has probability
+  // ~1e-266. Kept as a deterministic safety net. chooseTarget() guarantees
+  // `goal` is in TARGET_POOL, and FALLBACKS has an entry for each of them.
+  const fb = FALLBACKS[goal];
+  return { nums: [...fb.nums], solution: fb.solution, target: goal };
 }

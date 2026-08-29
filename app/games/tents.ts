@@ -234,33 +234,38 @@ export interface TentsPuzzle {
   N: number;
 }
 
-/**
- * Generate a Tents puzzle deterministically from a seeded RNG.
- *
- * Strategy: repeatedly pick a random empty cell as a tent candidate, verify no
- * 8-directional tent conflicts, then pick one of its empty orthogonal neighbours
- * as the tree. Repeat until the target number of tents is reached or the grid is
- * exhausted. Clues are derived from the completed solution.
- *
- * @param rng  Seeded RNG (from makeRng).
- * @param N    Grid dimension (e.g., 6, 8, 10).
- */
-export function buildPuzzle(rng: Rng, N: number): TentsPuzzle {
-  // Target: ~20% of cells, minimum 3
-  const target = Math.max(3, Math.round(N * N * 0.20));
+/** Number of tent–tree pairs a puzzle of dimension N aims for: ~20% of cells, minimum 3. */
+export function tentTarget(N: number): number {
+  return Math.max(3, Math.round(N * N * 0.20));
+}
 
+/**
+ * Upper bound on greedy placement rounds per puzzle. Measured over 9 800 seeded
+ * puzzles (N = 6, 8, 10 plus daily "YYYY-MM-DD" seeds) the target was always
+ * reached within 4 rounds; the bound only guards against pathological RNGs.
+ */
+export const MAX_PLACEMENT_ROUNDS = 40;
+
+/**
+ * One greedy placement round: repeatedly pick a random empty cell as a tent
+ * candidate, verify no 8-directional tent conflicts, then pick one of its empty
+ * orthogonal neighbours as the tree. Stops once `target` pairs are placed or the
+ * attempt budget runs out — the greedy walk can dead-end when every remaining
+ * empty cell touches a tent or has no empty orthogonal neighbour.
+ */
+function placeTents(rng: Rng, N: number, target: number): { grid: number[]; placed: number } {
   const grid = new Array<number>(N * N).fill(CELL_EMPTY);
 
   let placed = 0;
   const maxAttempts = N * N * 20;
 
   for (let attempt = 0; attempt < maxAttempts && placed < target; attempt++) {
-    // Collect empty cells as tent candidates
+    // Collect empty cells as tent candidates. The list is never empty here: a
+    // pair consumes 2 cells and 2 * target < N * N for every N >= 3, while for
+    // N = 2 the two cells left after the first pair both touch the tent, so
+    // they are never consumed.
     const emptyTent: number[] = [];
     for (let i = 0; i < N * N; i++) if (grid[i] === CELL_EMPTY) emptyTent.push(i);
-    // istanbul ignore start
-    if (emptyTent.length === 0) break; // dead: target≤20% cells; diagonal constraint prevents exhausting all cells
-    // istanbul ignore stop
 
     const ti = rng.pick(emptyTent);
     const tr = Math.floor(ti / N), tc = ti % N;
@@ -289,6 +294,41 @@ export function buildPuzzle(rng: Rng, N: number): TentsPuzzle {
     grid[ti]    = CELL_TENT;
     grid[treeI] = CELL_TREE;
     placed++;
+  }
+
+  return { grid, placed };
+}
+
+/**
+ * Generate a Tents puzzle deterministically from a seeded RNG.
+ *
+ * Strategy: generate-then-verify. A greedy placement round (see placeTents) can
+ * dead-end short of the target — it did so on ~7% of seeds — so rounds are
+ * retried on the same RNG stream, keeping the densest board, until the target
+ * is met or MAX_PLACEMENT_ROUNDS is exhausted. The solution is valid by
+ * construction (each tent adjacent to its own tree, no two tents touching) and
+ * the clues are derived from it, so every puzzle is solvable; the win check
+ * (isWin) validates the rules, so any other valid tent layout is accepted too.
+ *
+ * @param rng  Seeded RNG (from makeRng).
+ * @param N    Grid dimension, at least 2 (the UI offers 6, 8, 10).
+ */
+export function buildPuzzle(rng: Rng, N: number): TentsPuzzle {
+  // A 1×1 (or smaller) grid cannot hold a tent next to a tree; refuse rather
+  // than hand back an empty, unwinnable puzzle.
+  if (N < 2) throw new RangeError(`Tents needs a grid of at least 2×2, got ${N}`);
+
+  const target = tentTarget(N);
+
+  let grid: number[] = [];
+  let bestPlaced = -1;
+  for (let round = 0; round < MAX_PLACEMENT_ROUNDS; round++) {
+    const attempt = placeTents(rng, N, target);
+    if (attempt.placed > bestPlaced) {
+      grid = attempt.grid;
+      bestPlaced = attempt.placed;
+    }
+    if (bestPlaced >= target) break;
   }
 
   // Derive clues from solution

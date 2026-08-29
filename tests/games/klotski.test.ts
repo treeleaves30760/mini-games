@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { makeRng, todaySeed } from "~/utils/rng";
 import {
   COLS,
   ROWS,
   WIN_ROW,
   WIN_COL,
   VALID_LAYOUTS,
+  pickLayout,
   blockDims,
   blockCells,
   buildOccupied,
@@ -13,6 +15,8 @@ import {
   isWon,
   isValidLayout,
   type Block,
+  type BlockType,
+  type Layout,
 } from "~/games/klotski";
 
 // ---- helpers ----
@@ -433,5 +437,345 @@ describe("canMove — out-of-bounds edge cases", () => {
   it("2×2 at (3,1) cannot move down (row 4+1 = 5, out of bounds)", () => {
     const b: Block = { id: 0, type: "2x2", r: 3, c: 1 };
     expect(canMove(b, 1, 0, [b])).toBe(false);
+  });
+});
+
+// =====================================================================
+// Solvability audit — independent BFS solver
+//
+// The solver below has its own board encoding and legality rule (it does not
+// reuse canMove/blockDims), so it independently certifies that every bundled
+// layout is solvable under the game's exact movement rules. Every solution it
+// finds is then replayed through the game's own canMove/shiftBlock/isWon.
+//
+// Two move-counting conventions mirror the component's counter:
+//   "step"  — one cell per move (keyboard arrows → doMove)
+//   "slide" — one straight-line slide of any length per move (drag or
+//             click-an-empty-cell → slideBlock). This is the most generous
+//             counting, so its optimum is the true lower bound of the counter
+//             and is what Layout.minMoves promises.
+// =====================================================================
+
+/** Block sizes, written out independently of blockDims so the solver cannot inherit its bugs. */
+const SOLVER_DIMS: Record<BlockType, { w: number; h: number }> = {
+  "2x2": { w: 2, h: 2 },
+  "1x2h": { w: 2, h: 1 },
+  "2x1v": { w: 1, h: 2 },
+  "1x1": { w: 1, h: 1 },
+};
+
+/** One character per block type for the canonical state key. */
+const TYPE_CHAR: Record<BlockType, string> = { "2x2": "C", "1x2h": "H", "2x1v": "V", "1x1": "S" };
+
+const DIRS: ReadonlyArray<readonly [number, number]> = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+/** Cell → occupying block id (-1 = empty). Throws if blocks overlap or leave the board. */
+function idGrid(blks: Block[]): number[] {
+  const g = new Array<number>(ROWS * COLS).fill(-1);
+  for (const b of blks) {
+    const { w, h } = SOLVER_DIMS[b.type];
+    for (let r = b.r; r < b.r + h; r++) {
+      for (let c = b.c; c < b.c + w; c++) {
+        if (r < 0 || r >= ROWS || c < 0 || c >= COLS) throw new Error(`block ${b.id} leaves the board`);
+        if (g[r * COLS + c] !== -1) throw new Error(`block ${b.id} overlaps block ${g[r * COLS + c]}`);
+        g[r * COLS + c] = b.id;
+      }
+    }
+  }
+  return g;
+}
+
+/**
+ * Canonical state key: one char per cell (block type, or "." when empty).
+ * Blocks of the same type are interchangeable, and every maximal run of
+ * same-type cells tiles in exactly one way, so the key is a bijection on
+ * canonical states — this is what keeps the classic search at ~26k states.
+ */
+function encode(blks: Block[]): string {
+  const cells = new Array<string>(ROWS * COLS).fill(".");
+  for (const b of blks) {
+    const { w, h } = SOLVER_DIMS[b.type];
+    for (let r = b.r; r < b.r + h; r++)
+      for (let c = b.c; c < b.c + w; c++) cells[r * COLS + c] = TYPE_CHAR[b.type];
+  }
+  return cells.join("");
+}
+
+/**
+ * The solver's own legality rule: block `b` may shift one cell by (dr, dc)
+ * when it stays on the board and only enters cells that are empty or its own.
+ */
+function solverCanStep(b: Block, dr: number, dc: number, g: number[]): boolean {
+  const { w, h } = SOLVER_DIMS[b.type];
+  for (let r = b.r; r < b.r + h; r++) {
+    for (let c = b.c; c < b.c + w; c++) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return false;
+      const occupant = g[nr * COLS + nc];
+      if (occupant !== -1 && occupant !== b.id) return false;
+    }
+  }
+  return true;
+}
+
+/** One solver move: slide block `id` by `steps` cells in direction (dr, dc). */
+interface SolverMove {
+  id: number;
+  dr: number;
+  dc: number;
+  steps: number;
+}
+
+type Convention = "step" | "slide";
+
+interface SearchResult {
+  /** A shortest solution, or null when Cao Cao can never reach the exit. */
+  moves: SolverMove[] | null;
+  /** Canonical keys of every state reachable from the start. */
+  keys: Set<string>;
+  /** One concrete board (with block ids) per reachable state. */
+  boards: Block[][];
+  /** How many reachable states have Cao Cao at the exit. */
+  goalStates: number;
+}
+
+/** Breadth-first search over full board states; explores the whole reachable graph. */
+function solve(start: Block[], convention: Convention): SearchResult {
+  interface Node {
+    blks: Block[];
+    parent: Node | null;
+    move: SolverMove | null;
+  }
+  const root: Node = { blks: clone(start), parent: null, move: null };
+  const keys = new Set<string>([encode(root.blks)]);
+  const boards: Block[][] = [root.blks];
+  let frontier: Node[] = [root];
+  let goal: Node | null = null;
+  let goalStates = 0;
+
+  while (frontier.length) {
+    const next: Node[] = [];
+    for (const node of frontier) {
+      const cao = get(node.blks, 0);
+      if (cao.r === WIN_ROW && cao.c === WIN_COL) {
+        goalStates++;
+        if (!goal) goal = node; // BFS order ⇒ the first goal popped is a shortest one
+      }
+      const g = idGrid(node.blks);
+      for (const b of node.blks) {
+        for (const [dr, dc] of DIRS) {
+          let moved = b;
+          for (let steps = 1; ; steps++) {
+            if (!solverCanStep(moved, dr, dc, g)) break;
+            moved = { ...moved, r: moved.r + dr, c: moved.c + dc };
+            const blks = node.blks.map((x) => (x.id === b.id ? moved : x));
+            const key = encode(blks);
+            if (!keys.has(key)) {
+              keys.add(key);
+              boards.push(blks);
+              next.push({ blks, parent: node, move: { id: b.id, dr, dc, steps } });
+            }
+            if (convention === "step") break;
+          }
+        }
+      }
+    }
+    frontier = next;
+  }
+
+  if (!goal) return { moves: null, keys, boards, goalStates };
+  const moves: SolverMove[] = [];
+  for (let n: Node = goal; n.parent; n = n.parent) moves.unshift(n.move!);
+  return { moves, keys, boards, goalStates };
+}
+
+/**
+ * Replay a solver solution through the game's own primitives, asserting at
+ * every single-cell step that canMove allows it, the board stays valid, and
+ * the win fires exactly once: after the final cell of the final move.
+ * Returns the number of single-cell steps replayed.
+ */
+function replay(start: Block[], moves: SolverMove[]): number {
+  let blks = clone(start);
+  let cells = 0;
+  for (const m of moves) {
+    for (let s = 0; s < m.steps; s++) {
+      expect(isWon(blks)).toBe(false);
+      expect(canMove(get(blks, m.id), m.dr, m.dc, blks)).toBe(true);
+      blks = shiftBlock(blks, m.id, m.dr, m.dc);
+      expect(isValidLayout(blks)).toBe(true);
+      cells++;
+    }
+  }
+  expect(isWon(blks)).toBe(true);
+  return cells;
+}
+
+describe("solver self-check", () => {
+  it("reports an unsolvable board (no empty cell, so nothing can move)", () => {
+    const blks: Block[] = [{ id: 0, type: "2x2", r: 0, c: 1 }];
+    let id = 1;
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (!(r < 2 && c >= 1 && c <= 2)) blks.push({ id: id++, type: "1x1", r, c });
+    expect(blks).toHaveLength(17);
+    const res = solve(blks, "slide");
+    expect(res.moves).toBeNull();
+    expect(res.keys.size).toBe(1);
+    expect(res.goalStates).toBe(0);
+  });
+
+  it("finds the trivial solution on an otherwise empty board", () => {
+    const blks: Block[] = [{ id: 0, type: "2x2", r: 1, c: 1 }];
+    expect(solve(blks, "step").moves).toEqual([
+      { id: 0, dr: 1, dc: 0, steps: 1 },
+      { id: 0, dr: 1, dc: 0, steps: 1 },
+    ]);
+    expect(solve(blks, "slide").moves).toEqual([{ id: 0, dr: 1, dc: 0, steps: 2 }]);
+  });
+
+  it("rejects overlapping or off-board boards", () => {
+    expect(() =>
+      idGrid([
+        { id: 0, type: "1x1", r: 0, c: 0 },
+        { id: 1, type: "1x1", r: 0, c: 0 },
+      ]),
+    ).toThrow(/overlaps/);
+    expect(() => idGrid([{ id: 0, type: "2x1v", r: 4, c: 0 }])).toThrow(/leaves/);
+  });
+});
+
+/** Audit facts for the bundled layouts: BFS optimum under each convention. */
+const OPTIMA: Record<string, { step: number; slide: number }> = {
+  橫刀立馬: { step: 116, slide: 90 },
+  百萬軍中: { step: 90, slide: 67 },
+};
+
+/** Expectations for a layout; a layout added without them fails loudly at collection time. */
+function optimaFor(name: string): { step: number; slide: number } {
+  const o = OPTIMA[name];
+  if (!o) throw new Error(`no audit expectations recorded for layout "${name}"`);
+  return o;
+}
+
+/** The classic piece set's reachable state graph has 25,955 canonical states. */
+const CLASSIC_STATES = 25955;
+
+describe("solvability audit — every bundled layout", () => {
+  for (const layout of VALID_LAYOUTS) {
+    describe(`"${layout.name}"`, () => {
+      const step = solve(layout.blocks, "step");
+      const slide = solve(layout.blocks, "slide");
+      const expected = optimaFor(layout.name);
+
+      it("uses the classic piece set with exactly two empty cells", () => {
+        const count = (t: BlockType) => layout.blocks.filter((b) => b.type === t).length;
+        expect(count("2x2")).toBe(1);
+        expect(count("2x1v")).toBe(4);
+        expect(count("1x2h")).toBe(1);
+        expect(count("1x1")).toBe(4);
+        expect(idGrid(layout.blocks).filter((id) => id === -1)).toHaveLength(2);
+      });
+
+      it(`is solvable one cell at a time in ${expected.step} steps (BFS optimum)`, () => {
+        expect(step.moves).not.toBeNull();
+        expect(step.moves!).toHaveLength(expected.step);
+        expect(step.moves!.every((m) => m.steps === 1)).toBe(true);
+      });
+
+      it(`is solvable in ${expected.slide} straight-line slides, and minMoves promises exactly that`, () => {
+        expect(slide.moves).not.toBeNull();
+        expect(slide.moves!).toHaveLength(expected.slide);
+        expect(layout.minMoves).toBe(slide.moves!.length);
+      });
+
+      it("keyboard play cannot beat minMoves (single-step optimum ≥ slide optimum)", () => {
+        expect(step.moves!.length).toBeGreaterThanOrEqual(layout.minMoves);
+      });
+
+      it("the single-step solution replays through canMove/shiftBlock and wins only on its last step", () => {
+        expect(replay(layout.blocks, step.moves!)).toBe(expected.step);
+      });
+
+      it("the slide solution replays through canMove/shiftBlock and wins only on its last cell", () => {
+        expect(replay(layout.blocks, slide.moves!)).toBeGreaterThanOrEqual(expected.slide);
+      });
+
+      it("explores the whole classic state graph under both conventions", () => {
+        expect(step.keys.size).toBe(CLASSIC_STATES);
+        expect(slide.keys.size).toBe(CLASSIC_STATES);
+        expect(slide.goalStates).toBe(step.goalStates);
+      });
+
+      it("every reachable state is a valid board, and isWon fires exactly when Cao Cao is at the exit", () => {
+        let invalid = 0;
+        let wrongWin = 0;
+        let goals = 0;
+        for (const blks of step.boards) {
+          if (!isValidLayout(blks)) invalid++;
+          const cao = get(blks, 0);
+          const atExit = cao.r === WIN_ROW && cao.c === WIN_COL;
+          if (isWon(blks) !== atExit) wrongWin++;
+          if (atExit) goals++;
+        }
+        expect(invalid).toBe(0);
+        expect(wrongWin).toBe(0);
+        expect(goals).toBe(step.goalStates);
+        expect(goals).toBeGreaterThan(0);
+      });
+    });
+  }
+
+  it("canMove agrees with the solver's rule for all 10 blocks × 4 directions in every reachable state", () => {
+    // Both bundled layouts live in the same 25,955-state component (asserted
+    // below), so one sweep from any of them covers every state of both.
+    const [first] = VALID_LAYOUTS;
+    if (!first) throw new Error("no bundled layouts");
+    const { keys, boards } = solve(first.blocks, "step");
+    for (const layout of VALID_LAYOUTS) expect(keys.has(encode(layout.blocks))).toBe(true);
+    let checked = 0;
+    let mismatches = 0;
+    for (const blks of boards) {
+      const g = idGrid(blks);
+      for (const b of blks) {
+        for (const [dr, dc] of DIRS) {
+          checked++;
+          if (canMove(b, dr, dc, blks) !== solverCanStep(b, dr, dc, g)) mismatches++;
+        }
+      }
+    }
+    expect(checked).toBe(CLASSIC_STATES * 10 * 4);
+    expect(mismatches).toBe(0);
+  });
+});
+
+// ---- pickLayout ----
+
+describe("pickLayout", () => {
+  it("is deterministic for a given seed", () => {
+    const a = pickLayout(makeRng("2026-08-29"));
+    const b = pickLayout(makeRng("2026-08-29"));
+    expect(b).toBe(a);
+    expect(VALID_LAYOUTS).toContain(a);
+  });
+
+  it("returns a bundled (BFS-verified) layout for every daily seed of a year and for numeric seeds, using each layout", () => {
+    const picked = new Set<Layout>();
+    for (let d = 0; d < 366; d++) {
+      const layout = pickLayout(makeRng(todaySeed(new Date(2026, 0, 1 + d))));
+      expect(VALID_LAYOUTS).toContain(layout);
+      picked.add(layout);
+    }
+    for (let seed = 1; seed <= 300; seed++) {
+      const layout = pickLayout(makeRng(seed));
+      expect(VALID_LAYOUTS).toContain(layout);
+      picked.add(layout);
+    }
+    expect(picked.size).toBe(VALID_LAYOUTS.length);
+  });
+
+  it("free play (null seed) still yields a bundled layout", () => {
+    expect(VALID_LAYOUTS).toContain(pickLayout(makeRng(null)));
   });
 });

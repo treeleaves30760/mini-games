@@ -13,7 +13,7 @@
 
 // Pure game logic — unit-tested in app/games/arrows.ts
 import {
-  DIRV, DIFFS, buildOne, solveDepth, isRemovable, isWon as arrowsIsWon,
+  DIRV, DIFFS, generateLevel, isRemovable, isWon as arrowsIsWon,
 } from "~/games/arrows";
 
 const props = defineProps({ seed: { type: String, default: null } });
@@ -32,6 +32,9 @@ const n = ref(6);
 const pieces = ref([]); // { id, cells:[{r,c}...tail→head], dir, color, leaving, shake, hint }
 const won = ref(false);
 const cleared = ref(0);
+/* Piece ids are unique across games (never reset): a leave-timeout still pending
+   from a previous board must not find — and splice out — a piece of the new one. */
+let nextId = 1;
 
 const remaining = computed(() => pieces.value.filter((p) => !p.leaving).length);
 const diffLabel = computed(() => DIFFS.find((d) => d.key === difficulty.value)?.label || "");
@@ -43,21 +46,12 @@ function newGame(diffKey) {
   won.value = false;
 
   const rng = makeRng(props.seed ?? null);
-  let best = null;
-  for (let k = 0; k < 10; k++) {
-    const built = buildOne(rng, cfg);
-    const depth = solveDepth(built, cfg.n);
-    if (depth < 0) continue;
-    const cells = built.reduce((s, p) => s + p.cells.length, 0);
-    const score = depth * 1000 + built.length * 10 + cells;
-    if (!best || score > best.score) best = { built, score };
-  }
-  const built = best ? best.built : buildOne(rng, cfg);
+  // Best-of-10 reverse-placed candidates, each verified solvable (app/games/arrows.ts).
+  const built = generateLevel(rng, cfg);
 
   const pal = makeRng(props.seed ? props.seed + "#c" : null).shuffle(PALETTE.slice());
-  let id = 1;
   pieces.value = built.map((p, i) => ({
-    id: id++,
+    id: nextId++,
     cells: p.cells,
     dir: p.dir,
     color: pal[i % pal.length],

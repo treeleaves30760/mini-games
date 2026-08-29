@@ -7,7 +7,8 @@
 import {
   computeClues as _computeClues,
   generateSolution as _generateSolution,
-  isSolved,
+  cluesEqual,
+  matchesClues,
 } from "~/games/nonogram";
 
 const accent = "#5ec8d8";
@@ -24,7 +25,9 @@ const size = computed(() => SIZES[sizeIdx.value]);
 
 // Board state: 0=empty, 1=filled, 2=marked-X
 const board = ref([]);
-const solution = ref([]);
+// The puzzle IS its clues: the picture they were generated from is only one of
+// possibly many valid fillings, so it is not kept — every check below is
+// clue-based (see app/games/nonogram.ts).
 const rowClues = ref([]);
 const colClues = ref([]);
 const gameState = ref("playing"); // playing | won
@@ -40,12 +43,11 @@ const dragState = reactive({ active: false, value: 0, axis: null, fixedLine: -1,
 function initGame() {
   stopTimer();
   const N = size.value;
-  const sol = _generateSolution(N, props.seed);
-  solution.value = sol;
-  board.value = new Array(N * N).fill(0);
-  const clues = _computeClues(sol, N);
+  const picture = _generateSolution(N, props.seed);
+  const clues = _computeClues(picture, N);
   rowClues.value = clues.rows;
   colClues.value = clues.cols;
+  board.value = new Array(N * N).fill(0);
   gameState.value = "playing";
   elapsed.value = 0;
   markMode.value = false;
@@ -63,17 +65,22 @@ function stopTimer() {
   if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
 }
 
+// Clues of the player's current board, recomputed once per board change.
+const boardClues = computed(() => _computeClues(board.value, size.value));
+
+// Progress = share of rows + columns whose clue is already satisfied.
 const progress = computed(() => {
-  const sol = solution.value;
-  const b = board.value;
-  if (!sol.length) return 0;
-  const total = sol.filter((v) => v === 1).length;
-  const correct = sol.filter((v, i) => v === 1 && b[i] === 1).length;
-  return total > 0 ? Math.round((correct / total) * 100) : 0;
+  const total = rowClues.value.length + colClues.value.length;
+  if (!total) return 0;
+  let done = 0;
+  for (let r = 0; r < rowClues.value.length; r++) if (isRowComplete(r)) done++;
+  for (let c = 0; c < colClues.value.length; c++) if (isColComplete(c)) done++;
+  return Math.round((done / total) * 100);
 });
 
 function checkWin() {
-  if (!isSolved(board.value, solution.value)) return;
+  // Any board whose clues match wins — not only the generated picture.
+  if (!matchesClues(board.value, { rows: rowClues.value, cols: colClues.value })) return;
   stopTimer();
   gameState.value = "won";
   emit("solved", { time: elapsed.value });
@@ -162,26 +169,13 @@ function setSize(i) {
   initGame();
 }
 
-// Row completion check for visual feedback
+// Row/column completion for visual feedback: a line is done when the runs the
+// player has filled match its clue, whichever valid filling they chose.
 function isRowComplete(r) {
-  const N = size.value;
-  const sol = solution.value;
-  const b = board.value;
-  for (let c = 0; c < N; c++) {
-    const i = r * N + c;
-    if ((sol[i] === 1) !== (b[i] === 1)) return false;
-  }
-  return true;
+  return cluesEqual(boardClues.value.rows[r], rowClues.value[r]);
 }
 function isColComplete(c) {
-  const N = size.value;
-  const sol = solution.value;
-  const b = board.value;
-  for (let r = 0; r < N; r++) {
-    const i = r * N + c;
-    if ((sol[i] === 1) !== (b[i] === 1)) return false;
-  }
-  return true;
+  return cluesEqual(boardClues.value.cols[c], colClues.value[c]);
 }
 
 watch(() => props.seed, () => { initGame(); });

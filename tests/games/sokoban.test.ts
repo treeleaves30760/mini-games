@@ -16,26 +16,42 @@ import type { ParsedLevel } from "~/games/sokoban";
 
 // ---------------------------------------------------------------------------
 // BFS solver — proves a level is actually winnable (win = every box on a
-// target). This is the real "no unwinnable levels" invariant; an equal
-// box/target count does NOT imply solvability (a corner-locked box can make a
-// perfectly balanced level impossible).
+// target) and hands back the shortest move sequence so the tests can replay it
+// through the game's own applyMove(). This is the real "no unwinnable levels"
+// invariant; an equal box/target count does NOT imply solvability (a
+// corner-locked box can make a perfectly balanced level impossible).
+//
+// The rules mirror applyMove exactly: 4-directional steps, out-of-bounds is a
+// wall (cellAt), a box moves one cell only when the cell beyond it is neither
+// wall nor box, and boxes are never pulled.
 // ---------------------------------------------------------------------------
-function isLevelSolvable(lv: ParsedLevel, limit = 5_000_000): boolean {
+type Step = [number, number];
+const DIRS: Step[] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+
+/** Shortest solution as (dx, dy) steps, or null if none is found within `limit` states. */
+function solveLevel(lv: ParsedLevel, limit = 5_000_000): Step[] | null {
   const targetKeys = new Set(lv.targets.map((t) => `${t.x},${t.y}`));
   const isWall = (x: number, y: number) => cellAt(lv, x, y) === WALL;
   const won = (bs: string[]) => bs.every((b) => targetKeys.has(b));
   const ser = (p: string, bs: string[]) => p + "|" + bs.join(";");
   const start = { p: `${lv.px},${lv.py}`, bs: lv.boxes.map((b) => `${b.x},${b.y}`).sort() };
-  if (won(start.bs)) return true;
-  const seen = new Set([ser(start.p, start.bs)]);
-  const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-  let frontier = [start];
+  if (won(start.bs)) return [];
+  const startKey = ser(start.p, start.bs);
+  // parent pointers: state key -> [previous state key, step that led here]
+  const parent = new Map<string, [string, Step] | null>([[startKey, null]]);
+  const pathTo = (key: string): Step[] => {
+    const path: Step[] = [];
+    for (let e = parent.get(key); e; e = parent.get(e[0])) path.push(e[1]);
+    return path.reverse();
+  };
+  let frontier = [{ key: startKey, ...start }];
   let states = 0;
   while (frontier.length) {
     const next: typeof frontier = [];
     for (const st of frontier) {
       const [px, py] = st.p.split(",").map(Number);
-      for (const [dx, dy] of dirs) {
+      for (const step of DIRS) {
+        const [dx, dy] = step;
         const nx = px + dx, ny = py + dy;
         if (isWall(nx, ny)) continue;
         const nk = `${nx},${ny}`;
@@ -49,18 +65,21 @@ function isLevelSolvable(lv: ParsedLevel, limit = 5_000_000): boolean {
           bs[bi] = bk;
           bs.sort();
         }
-        const s = ser(nk, bs);
-        if (seen.has(s)) continue;
-        seen.add(s);
-        if (won(bs)) return true;
-        next.push({ p: nk, bs });
-        if (++states > limit) return false;
+        const key = ser(nk, bs);
+        if (parent.has(key)) continue;
+        parent.set(key, [st.key, step]);
+        if (won(bs)) return pathTo(key);
+        next.push({ key, p: nk, bs });
+        if (++states > limit) return null;
       }
     }
     frontier = next;
   }
-  return false;
+  return null;
 }
+
+/** Shortest solutions of the bundled levels, computed once and shared by the tests below. */
+const SOLUTIONS = LEVELS.map((lv) => solveLevel(lv));
 
 // ---------------------------------------------------------------------------
 // Helpers: tiny hand-crafted levels for deterministic unit tests
@@ -78,13 +97,15 @@ const CORRIDOR_RAW = {
 const CORRIDOR = parseLevel(CORRIDOR_RAW);
 
 /**
- * 3×3 open room with player, one box, one target:
+ * 3×2 room with player, one box, one target:
  *   #####
  *   #@$ #
  *   # . #
  *   #####
  * Player (1,1), box (2,1), target (2,2).
- * Pushing right is blocked (wall at x=3). Pushing down puts box on target → win.
+ * Used for plain-move tests. Note the level is deliberately NOT solvable: the
+ * box hugs the top wall, so every push sends it into a corner off-target — it
+ * doubles as the solver's negative example.
  */
 const ROOM_RAW = {
   name: "room",
@@ -549,6 +570,38 @@ describe("applyUndo", () => {
     applyUndo(s0);
     expect(s0.history).toHaveLength(1);
   });
+
+  it("refunds the push counter only when the undone move was a push", () => {
+    // 轉角: player (1,3), box (2,2), target (2,1) — right (plain move), then up (push → win)
+    const lv = LEVELS[1];
+    const r1 = applyMove(lv, makeLevelState(1), 1, 0);
+    expect(r1.kind).toBe("moved");
+    if (r1.kind !== "moved") return;
+    const r2 = applyMove(lv, r1.state, 0, -1);
+    expect(r2.kind).toBe("won");
+    if (r2.kind !== "won") return;
+    expect(r2.state.pushes).toBe(1);
+
+    // undo the push: box back to (2,2), pushes 1 → 0, win cleared
+    const u1 = applyUndo(r2.state);
+    expect(u1.kind).toBe("undone");
+    if (u1.kind !== "undone") return;
+    expect(u1.state.boxes).toEqual([{ x: 2, y: 2 }]);
+    expect(u1.state.pushes).toBe(0);
+    expect(u1.state.moves).toBe(1);
+    expect(u1.state.won).toBe(false);
+
+    // undo the plain move: boxes unchanged, pushes stay 0
+    const u2 = applyUndo(u1.state);
+    expect(u2.kind).toBe("undone");
+    if (u2.kind !== "undone") return;
+    expect(u2.state.boxes).toEqual([{ x: 2, y: 2 }]);
+    expect(u2.state.pushes).toBe(0);
+    expect(u2.state.moves).toBe(0);
+    expect(u2.state.playerX).toBe(lv.px);
+    expect(u2.state.playerY).toBe(lv.py);
+    expect(applyUndo(u2.state).kind).toBe("empty");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -630,6 +683,15 @@ describe("makeLevelState", () => {
     expect(s.levelIndex).toBe(LEVELS.length - 1);
   });
 
+  it("every in-range index (level nav / daily rng pick) yields that level; past-the-end wraps to 0", () => {
+    for (let i = 0; i < LEVELS.length; i++) {
+      const s = makeLevelState(i);
+      expect(s.levelIndex).toBe(i);
+      expect(s.boxes).toEqual(LEVELS[i].boxes);
+    }
+    expect(makeLevelState(LEVELS.length).levelIndex).toBe(0);
+  });
+
   it("does not share box array with the level definition", () => {
     const s1 = makeLevelState(0);
     const s2 = makeLevelState(0);
@@ -640,9 +702,66 @@ describe("makeLevelState", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Solver sanity — the helper must be able to say "no", otherwise the
+// solvability test below would prove nothing.
+// ---------------------------------------------------------------------------
+describe("BFS solver helper", () => {
+  it("returns the shortest step list for a solvable level", () => {
+    expect(solveLevel(CORRIDOR)).toEqual([[1, 0]]);
+    // 轉角: right (plain move), then up (push onto the target)
+    expect(solveLevel(LEVELS[1])).toEqual([[1, 0], [0, -1]]);
+  });
+
+  it("returns an empty solution for a level that starts solved", () => {
+    const done = parseLevel({ name: "done", map: ["#####", "#@* #", "#####"] });
+    expect(solveLevel(done)).toEqual([]);
+  });
+
+  it("returns null for a level whose only box can only be pushed into a corner", () => {
+    expect(solveLevel(ROOM)).toBeNull();
+  });
+
+  it("returns null when the state budget runs out", () => {
+    expect(solveLevel(LEVELS[4], 10)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Bundled levels: structural invariants
 // ---------------------------------------------------------------------------
 describe("bundled levels — well-formedness", () => {
+  it("every raw map is rectangular (no ragged rows)", () => {
+    for (const raw of RAW_LEVELS) {
+      const widths = new Set(raw.map.map((row) => row.length));
+      expect(widths.size, `${raw.name}: ragged rows`).toBe(1);
+    }
+  });
+
+  it("every raw map is fully enclosed by walls", () => {
+    for (const raw of RAW_LEVELS) {
+      const h = raw.map.length;
+      raw.map.forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) {
+          const onBorder = y === 0 || y === h - 1 || x === 0 || x === row.length - 1;
+          if (onBorder) {
+            expect(row[x], `${raw.name}: border cell (${x},${y}) is not a wall`).toBe(WALL);
+          }
+        }
+      });
+    }
+  });
+
+  it("every raw map has exactly one player marker and only known tile characters", () => {
+    for (const raw of RAW_LEVELS) {
+      const cells = raw.map.join("").split("");
+      const players = cells.filter((c) => c === "@" || c === "+").length;
+      expect(players, `${raw.name}: expected exactly one player`).toBe(1);
+      for (const c of cells) {
+        expect("# .$*@+", `${raw.name}: unknown tile '${c}'`).toContain(c);
+      }
+    }
+  });
+
   it("every level has at least one box and at least one target", () => {
     for (const lv of LEVELS) {
       expect(lv.boxes.length, `${lv.name}: no boxes`).toBeGreaterThan(0);
@@ -659,10 +778,33 @@ describe("bundled levels — well-formedness", () => {
     }
   });
 
-  it("every bundled level is actually solvable (BFS — no unwinnable puzzles)", () => {
-    for (const lv of LEVELS) {
-      expect(isLevelSolvable(lv), `${lv.name} is not solvable`).toBe(true);
-    }
+  it("every bundled level is solvable, and the BFS solution replays to a win through applyMove", () => {
+    LEVELS.forEach((lv, i) => {
+      const path = SOLUTIONS[i];
+      expect(path, `${lv.name} is not solvable`).not.toBeNull();
+      if (!path) return;
+
+      let st = makeLevelState(i);
+      let lastKind = "";
+      for (const [dx, dy] of path) {
+        const r = applyMove(lv, st, dx, dy);
+        expect(r.kind, `${lv.name}: solver step (${dx},${dy}) rejected by applyMove`).not.toBe("blocked");
+        if (r.kind === "blocked") return;
+        st = r.state;
+        lastKind = r.kind;
+      }
+      expect(lastKind, `${lv.name}: replay did not end in a win`).toBe("won");
+      expect(st.won).toBe(true);
+      expect(isWon(lv, st.boxes)).toBe(true);
+      expect(st.moves).toBe(path.length);
+      // every box rests on its own target
+      const occupied = new Set(st.boxes.map((b) => `${b.x},${b.y}`));
+      expect(occupied.size).toBe(st.boxes.length);
+    });
+  });
+
+  it("shortest solutions match the intended difficulty curve (update deliberately when a level changes)", () => {
+    expect(SOLUTIONS.map((p) => p!.length)).toEqual([1, 2, 7, 3, 23, 38]);
   });
 
   it("every level has a valid player start (within bounds, not on a wall)", () => {

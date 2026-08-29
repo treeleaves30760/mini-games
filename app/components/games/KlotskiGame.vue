@@ -1,6 +1,6 @@
 <script setup>
 /* 華容道 Klotski — classic 4-wide × 5-tall sliding-block puzzle.
-   Two embedded classic layouts (picked via rng).
+   Two embedded classic layouts (picked via rng), both proven solvable by BFS.
    Drag or select-then-click-empty to move blocks.
    Undo + reset. Win: 2×2 Cao Cao reaches rows 3-4, cols 1-2. */
 
@@ -8,7 +8,7 @@
 import {
   COLS,
   ROWS,
-  VALID_LAYOUTS,
+  pickLayout,
   blockDims,
   blockCells,
   buildOccupied,
@@ -35,7 +35,9 @@ const bestMoves = ref(0);
 const isRecord = ref(false);
 const history = ref([]); // undo stack: each entry is a blocks snapshot
 const layoutName = ref("");
+const minMoves = ref(0); // BFS-verified optimum of the current layout (slides count as one move)
 const selectedId = ref(null); // currently selected block id
+let currentLayout = null; // the Layout in play, so 重設 restores it instead of re-rolling
 
 const boardRef = ref(null);
 
@@ -64,11 +66,11 @@ function snapshot() {
   return blocks.value.map((b) => ({ ...b }));
 }
 
-function newGame() {
-  const rng = makeRng(props.seed);
-  const li = rng.int(0, VALID_LAYOUTS.length - 1);
-  const layout = VALID_LAYOUTS[li];
+// Put `layout` on the board in its starting position and clear all progress.
+function startLayout(layout) {
+  currentLayout = layout;
   layoutName.value = layout.name;
+  minMoves.value = layout.minMoves;
   blocks.value = layout.blocks.map((b) => ({ ...b }));
   moveCount.value = 0;
   won.value = false;
@@ -77,6 +79,10 @@ function newGame() {
   selectedId.value = null;
   history.value = [];
   loadBest();
+}
+
+function newGame() {
+  startLayout(pickLayout(makeRng(props.seed)));
 }
 
 watch(() => props.seed, newGame);
@@ -88,8 +94,11 @@ function undo() {
   selectedId.value = null;
 }
 
+// 重設 returns to the starting position of the *current* layout. (Free play
+// seeds the rng from Math.random, so re-picking here would swap layouts.)
 function reset() {
-  newGame();
+  if (currentLayout) startLayout(currentLayout);
+  else newGame();
 }
 
 // ---- move logic ----
@@ -125,6 +134,9 @@ function slideBlock(id, dr, dc, maxSteps) {
     if (!canMove(bNow, dr, dc, cur)) break;
     cur = shiftBlock(cur, id, dr, dc);
     steps++;
+    // Stop as soon as Cao Cao reaches the exit so a long slide cannot pass
+    // through the winning cells without the win registering.
+    if (isWon(cur)) break;
   }
   if (steps === 0) return 0;
   history.value.push(snap);
@@ -370,7 +382,7 @@ onBeforeUnmount(() => {
         <div class="panel__group">
           <span class="panel__legend">提示</span>
           <p class="hint">
-            標準解需要 81 步以上，請耐心規劃路線。<br />
+            此佈局最少需要 <strong>{{ minMoves }}</strong> 步（直線滑動一次計一步），請耐心規劃路線。<br />
             <strong>上一步</strong>可以撤銷，<strong>重設</strong>回到初始狀態。
           </p>
         </div>

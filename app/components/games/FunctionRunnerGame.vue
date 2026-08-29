@@ -1,5 +1,6 @@
 <script setup>
 import {
+  FUNCTION_RUNNER_COEFFICIENT_LIMITS,
   FUNCTION_RUNNER_DIFFICULTIES,
   evaluateFunction,
   functionRunnerStatus,
@@ -57,7 +58,7 @@ watch(effectiveDifficulty, generate);
 
 function adjust(key, delta) {
   if (!puzzle.value || won.value) return;
-  const limit = puzzle.value.kind === "quadratic" && key === "a" ? 3 : 8;
+  const limit = FUNCTION_RUNNER_COEFFICIENT_LIMITS[key];
   coeffs[key] = Math.max(-limit, Math.min(limit, coeffs[key] + delta));
   checkWin();
 }

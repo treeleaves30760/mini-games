@@ -10,6 +10,7 @@ import {
   buildEdgeSet,
   computeOddNodes,
   enterNode,
+  undoStep,
   isWon,
   isStartNode,
 } from "~/games/one-line";
@@ -158,9 +159,7 @@ function resetLevel() {
   overlay.open = false;
 }
 function undo() {
-  if (path.value.length === 0) return;
-  const removed = path.value.pop();
-  if (path.value.length) used.value.delete(edgeKey(removed, head.value));
+  if (!undoStep(path.value, used.value)) return;
   solved.value = false;
   overlay.open = false;
 }

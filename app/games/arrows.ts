@@ -235,6 +235,39 @@ export function solveDepth(built: PieceData[], N: number): number {
   return rounds;
 }
 
+// ------------------------------------------------------------------ level selection
+
+export interface GenerateOptions {
+  /** How many reverse-placed candidates to draw from `rng` (default 10). */
+  tries?: number;
+  /** Candidate builder (default `buildOne`). Injectable so tests can exercise
+   *  the safety-net rejection path with hand-crafted unsolvable boards. */
+  build?: (rng: Rng, cfg: DiffConfig) => PieceData[];
+}
+
+/** Draw `tries` candidate boards from `rng`, verify each one with `solveDepth`,
+ *  and return the best solvable candidate: deepest solution first, then more
+ *  pieces, then more covered cells. This is the exact selection the component
+ *  performs for a new game, so a seed always maps to the same board.
+ *  Every `buildOne` candidate is reverse-placed and therefore solvable; the
+ *  `solveDepth` check is a safety net, and the throw is unreachable with the
+ *  default builder. */
+export function generateLevel(rng: Rng, cfg: DiffConfig, opts: GenerateOptions = {}): PieceData[] {
+  const tries = opts.tries ?? 10;
+  const build = opts.build ?? buildOne;
+  let best: { built: PieceData[]; score: number } | null = null;
+  for (let k = 0; k < tries; k++) {
+    const built = build(rng, cfg);
+    const depth = solveDepth(built, cfg.n);
+    if (depth < 0) continue; // reject an unsolvable candidate outright
+    const cells = built.reduce((s, p) => s + p.cells.length, 0);
+    const score = depth * 1000 + built.length * 10 + cells;
+    if (!best || score > best.score) best = { built, score };
+  }
+  if (!best) throw new Error(`arrows: no solvable candidate found for "${cfg.key}"`);
+  return best.built;
+}
+
 // ------------------------------------------------------------------ gameplay logic
 
 /** True if piece `p` can be removed right now: no other non-leaving piece blocks

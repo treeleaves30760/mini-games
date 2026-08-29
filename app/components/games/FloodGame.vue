@@ -8,8 +8,7 @@
 import {
   PALETTE,
   SIZES,
-  LIMITS,
-  generateBoard,
+  generatePuzzle,
   getRegion as computeRegion,
   applyPick,
   isWon,
@@ -33,7 +32,9 @@ const SAVE_KEY = "playground.flood.best";
 // ---- reactive state ----
 const sizeIdx = ref(1);
 const gridSize = computed(() => props.daily ? 14 : SIZES[sizeIdx.value]);
-const moveLimit = computed(() => LIMITS[gridSize.value]);
+// Certified per board by generatePuzzle (the classic cap, raised only when the
+// built-in solver needs more) — never a limit the board cannot meet.
+const moveLimit = ref(0);
 
 const board = ref([]);
 const moves = ref(0);
@@ -47,7 +48,9 @@ let rng = makeRng(props.seed);
 // ---- board generation ----
 function generate() {
   rng = makeRng(props.seed);
-  board.value = generateBoard(gridSize.value, rng);
+  const puzzle = generatePuzzle(gridSize.value, rng);
+  board.value = puzzle.board;
+  moveLimit.value = puzzle.limit;
   moves.value = 0;
   won.value = false;
   lost.value = false;

@@ -132,14 +132,8 @@ export function enterNode(
   // Same node as head — nothing to do
   if (n === h) return false;
 
-  // Undo: step back to the previous node.
-  // We pop the current head FIRST, then the new head (= n) is at path[length-1].
-  // The edge to un-mark is between `removed` (old head) and `n` (new head after pop).
-  if (path.length >= 2 && n === path[path.length - 2]) {
-    const removed = path.pop()!;
-    used.delete(edgeKey(removed, n));
-    return true;
-  }
+  // Undo: step back to the previous node — the same operation as the 復原 button.
+  if (path.length >= 2 && n === path[path.length - 2]) return undoStep(path, used);
 
   // Advance along an undrawn edge
   const ek = edgeKey(h, n);
@@ -150,6 +144,21 @@ export function enterNode(
   }
 
   return false;
+}
+
+/**
+ * Undo the most recent step: pop the head of `path` and, if a node remains,
+ * un-mark the edge between the popped node and the new head.
+ * Returns false (and changes nothing) when there is nothing to undo.
+ *
+ * Shared by the back-step rule in `enterNode` and the component's 復原 button
+ * so the two undo flavours cannot drift apart.
+ */
+export function undoStep(path: number[], used: Set<string>): boolean {
+  if (path.length === 0) return false;
+  const removed = path.pop()!;
+  if (path.length) used.delete(edgeKey(removed, path[path.length - 1]));
+  return true;
 }
 
 /**

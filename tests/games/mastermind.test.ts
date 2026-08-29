@@ -2,11 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   CODE_LEN,
   MAX_TRIES,
+  DIGIT_COUNT,
   generateSecret,
   scoreMastermind,
   isWin,
+  type Feedback,
 } from "~/games/mastermind";
-import { makeRng } from "~/utils/rng";
+import { makeRng, todaySeed } from "~/utils/rng";
 
 // ---------------------------------------------------------------------------
 // scoreMastermind
@@ -194,4 +196,309 @@ describe("generateSecret", () => {
     expect(CODE_LEN).toBe(4);
     expect(MAX_TRIES).toBe(8);
   });
+});
+
+// ===========================================================================
+// Independent audit — reference feedback, secret/UI consistency, solvability.
+//
+// Nothing below reuses the game's algorithms except as the thing under test:
+// the reference peg counter is written from the textbook definition, the
+// candidate space is enumerated from the rules the UI shows the player, and the
+// solver only ever sees feedback produced by the game's own scoreMastermind.
+// ===========================================================================
+
+/** Every code the UI lets a player submit: CODE_LEN digits from 0..DIGIT_COUNT-1
+ *  with no repeats (the numpad greys out used digits and validate() rejects
+ *  duplicates). 10·9·8·7 = 5040 codes, in lexicographic order. */
+function enumerateCodes(): number[][] {
+  const out: number[][] = [];
+  const walk = (prefix: number[]) => {
+    if (prefix.length === CODE_LEN) {
+      out.push(prefix.slice());
+      return;
+    }
+    for (let d = 0; d < DIGIT_COUNT; d++) {
+      if (prefix.includes(d)) continue;
+      prefix.push(d);
+      walk(prefix);
+      prefix.pop();
+    }
+  };
+  walk([]);
+  return out;
+}
+const ALL_CODES = enumerateCodes();
+const N = ALL_CODES.length;
+const CODE_INDEX = new Map(ALL_CODES.map((c, i) => [c.join(""), i]));
+
+/** True when `code` obeys the constraints the UI imposes on a guess. */
+function isUiLegal(code: number[]): boolean {
+  return (
+    code.length === CODE_LEN &&
+    code.every((d) => Number.isInteger(d) && d >= 0 && d < DIGIT_COUNT) &&
+    new Set(code).size === CODE_LEN
+  );
+}
+
+/** Reference peg counter written from scratch (shares no code with the game):
+ *  exact = agreeing positions; misplaced = Σ_d min(#d in guess, #d in secret) − exact.
+ *  This is the textbook Mastermind rule and handles repeated symbols by construction. */
+function refFeedback(guess: number[], secret: number[]): Feedback {
+  let exact = 0;
+  for (let i = 0; i < secret.length; i++) if (guess[i] === secret[i]) exact++;
+  let common = 0;
+  for (let d = 0; d < DIGIT_COUNT; d++) {
+    let inGuess = 0;
+    let inSecret = 0;
+    for (let i = 0; i < secret.length; i++) {
+      if (guess[i] === d) inGuess++;
+      if (secret[i] === d) inSecret++;
+    }
+    common += Math.min(inGuess, inSecret);
+  }
+  return { exact, misplaced: common - exact };
+}
+
+/** Compact integer key for a feedback (0..24), used for bucketing. */
+const FEEDBACK_SLOTS = (CODE_LEN + 1) * (CODE_LEN + 1);
+const keyOf = (f: Feedback): number => f.exact * (CODE_LEN + 1) + f.misplaced;
+
+/** Seeds a Daily Challenge would actually use (every date of 2026, via the
+ *  same todaySeed() formatter the daily page uses) plus plain numeric seeds. */
+function auditSeeds(): (string | number)[] {
+  const seeds: (string | number)[] = [];
+  for (const d = new Date(2026, 0, 1); d.getFullYear() === 2026; d.setDate(d.getDate() + 1)) {
+    seeds.push(todaySeed(d));
+  }
+  for (let n = 1; n <= 300; n++) seeds.push(n);
+  return seeds;
+}
+
+describe("audit — scoreMastermind vs an independent reference peg counter", () => {
+  const cases: Array<[secret: number[], guess: number[], exact: number, misplaced: number]> = [
+    // The classic repeat traps: a symbol must never be credited more often than it
+    // appears in the secret, and exact matches are claimed before misplaced ones.
+    [[1, 1, 2, 2], [2, 2, 1, 1], 0, 4],
+    [[1, 1, 2, 3], [1, 1, 1, 1], 2, 0],
+    [[1, 2, 3, 4], [1, 1, 2, 2], 1, 1],
+    [[1, 1, 2, 2], [1, 1, 1, 1], 2, 0],
+    [[1, 1, 1, 2], [2, 2, 2, 1], 0, 2],
+    [[1, 2, 1, 3], [3, 1, 2, 1], 0, 4],
+    [[1, 1, 2, 2], [1, 2, 1, 2], 2, 2],
+    [[5, 5, 5, 5], [5, 5, 5, 5], 4, 0],
+    [[5, 5, 5, 5], [5, 1, 2, 3], 1, 0],
+    [[0, 1, 2, 3], [3, 2, 1, 0], 0, 4],
+    [[1, 2, 3, 4], [5, 6, 7, 8], 0, 0],
+  ];
+
+  it.each(cases)("secret %j vs guess %j → %iA%iB", (secret, guess, exact, misplaced) => {
+    expect(refFeedback(guess, secret)).toEqual({ exact, misplaced });
+    expect(scoreMastermind(guess, secret)).toEqual({ exact, misplaced });
+  });
+
+  it("agrees with the reference on 20,000 seeded random pairs (repeats allowed)", () => {
+    const rng = makeRng("mastermind-feedback-audit");
+    for (let n = 0; n < 20_000; n++) {
+      // Alternate between the full digit set and a 3-symbol alphabet so that
+      // repeated digits (in both guess and secret) are exercised heavily.
+      const top = n % 2 === 0 ? DIGIT_COUNT - 1 : 2;
+      const guess = Array.from({ length: CODE_LEN }, () => rng.int(0, top));
+      const secret = Array.from({ length: CODE_LEN }, () => rng.int(0, top));
+      const got = scoreMastermind(guess, secret);
+      const label = `guess ${guess.join("")} vs secret ${secret.join("")}`;
+      expect(got, label).toEqual(refFeedback(guess, secret));
+      // Peg feedback is symmetric in (guess, secret) and bounded by the code length.
+      expect(scoreMastermind(secret, guess), label).toEqual(got);
+      expect(got.exact + got.misplaced, label).toBeLessThanOrEqual(CODE_LEN);
+      // 3A1B is impossible: if three positions match, the fourth digit is either
+      // exact too or absent from the remaining pool.
+      expect(got.exact === CODE_LEN - 1 && got.misplaced === 1, label).toBe(false);
+    }
+  });
+
+  it("agrees with the reference for every UI-legal secret against a panel of guesses", () => {
+    const panel = [
+      [0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 0, 1], [3, 2, 1, 0], [9, 8, 7, 6],
+      [0, 0, 0, 0], [1, 1, 2, 2], [5, 5, 3, 1], // repeat-bearing guesses the UI forbids
+    ];
+    for (const secret of ALL_CODES) {
+      for (const guess of panel) {
+        expect(scoreMastermind(guess, secret), `guess ${guess.join("")} vs secret ${secret.join("")}`)
+          .toEqual(refFeedback(guess, secret));
+      }
+    }
+  });
+});
+
+describe("audit — the secret obeys the same rules the UI imposes on guesses", () => {
+  it("enumerates 10·9·8·7 = 5040 UI-legal codes", () => {
+    expect(N).toBe(5040);
+    expect(ALL_CODES.every(isUiLegal)).toBe(true);
+  });
+
+  it("is UI-legal (4 distinct digits 0–9) for every 2026 Daily seed and 300 numeric seeds", () => {
+    const seen = new Set<string>();
+    for (const seed of auditSeeds()) {
+      const secret = generateSecret(makeRng(seed));
+      expect(isUiLegal(secret), `seed ${seed}: ${secret.join("")}`).toBe(true);
+      // ...and is therefore one of the codes a player can actually enter.
+      expect(CODE_INDEX.has(secret.join("")), `seed ${seed}`).toBe(true);
+      seen.add(secret.join(""));
+    }
+    // 665 seeds over 5040 codes: expect ≈ 623 distinct; guard against a degenerate RNG.
+    expect(seen.size).toBeGreaterThan(550);
+  });
+
+  it("keeps the published seed → secret mapping (Daily Challenge must be stable)", () => {
+    // Golden values recorded from the original implementation; changing them would
+    // silently change everybody's daily puzzle.
+    expect(generateSecret(makeRng("2026-08-29"))).toEqual([5, 1, 6, 9]);
+    expect(generateSecret(makeRng("2026-01-01"))).toEqual([1, 3, 8, 2]);
+    expect(generateSecret(makeRng("2025-12-31"))).toEqual([8, 6, 4, 0]);
+    expect(generateSecret(makeRng(1))).toEqual([7, 8, 3, 2]);
+    expect(generateSecret(makeRng(42))).toEqual([0, 7, 3, 5]);
+  });
+
+  it("can produce every one of the 5040 codes (no secret is unreachable)", () => {
+    const seen = new Uint8Array(N);
+    let distinct = 0;
+    // Coupon-collector bound: ≈ 5040·ln(5040) ≈ 43k draws expected; cap generously.
+    // Seeds start at 1 because makeRng(0) is normalised to makeRng(1).
+    for (let seed = 1; distinct < N && seed <= 400_000; seed++) {
+      const i = CODE_INDEX.get(generateSecret(makeRng(seed)).join(""))!;
+      if (!seen[i]) {
+        seen[i] = 1;
+        distinct++;
+      }
+    }
+    expect(distinct).toBe(N);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Solvability — Knuth-style consistent-candidate solver driven only by the
+// game's feedback.  The solver keeps the set S of codes consistent with every
+// (guess, feedback) pair so far and guesses the member of S whose worst-case
+// feedback bucket over S is smallest (minimax restricted to consistent guesses).
+// A guess inside S can win immediately, so the count of guesses is exactly the
+// number of attempts the player would use.
+// ---------------------------------------------------------------------------
+
+/** FB[g * N + s] = feedback key of guessing ALL_CODES[g] against secret
+ *  ALL_CODES[s], computed with the game's own scoreMastermind. Built once
+ *  (~1 s) and shared by the solver tests. */
+let fbTable: Uint8Array | undefined;
+function feedbackTable(): Uint8Array {
+  if (!fbTable) {
+    fbTable = new Uint8Array(N * N);
+    for (let g = 0; g < N; g++) {
+      const guess = ALL_CODES[g];
+      for (let s = 0; s < N; s++) fbTable[g * N + s] = keyOf(scoreMastermind(guess, ALL_CODES[s]));
+    }
+  }
+  return fbTable;
+}
+
+/** Choose the next guess from the consistent set S. Decisions depend only on the
+ *  feedback history, so they are memoised across games (the decision tree is shared). */
+function pickGuess(S: number[], history: string, memo: Map<string, number>): number {
+  if (S.length <= 2) return S[0]; // a candidate guess wins now or leaves exactly one
+  const cached = memo.get(history);
+  if (cached !== undefined) return cached;
+  const FB = feedbackTable();
+  const buckets = new Int32Array(FEEDBACK_SLOTS);
+  let best = S[0];
+  let bestWorst = Infinity;
+  for (const g of S) {
+    buckets.fill(0);
+    let worst = 0;
+    for (const c of S) {
+      const n = ++buckets[FB[g * N + c]];
+      if (n > worst) worst = n;
+    }
+    if (worst < bestWorst) {
+      bestWorst = worst;
+      best = g;
+    }
+  }
+  memo.set(history, best);
+  return best;
+}
+
+type Oracle = (guess: number[]) => Feedback;
+type Consistency = (guessIdx: number, candidateIdx: number) => number;
+
+/** Play one game. `oracle` is the game's scoring bound to a hidden secret (the
+ *  solver never sees the secret); `consistency(g, c)` is the feedback key guess g
+ *  would receive if c were the secret, used to filter candidates. Returns the
+ *  number of guesses used (MAX_TRIES + 1 when the attempt budget ran out) and the
+ *  last code guessed. */
+function solve(oracle: Oracle, consistency: Consistency, memo: Map<string, number>) {
+  let S = ALL_CODES.map((_, i) => i);
+  let history = "";
+  let last: number[] = [];
+  for (let turn = 1; turn <= MAX_TRIES; turn++) {
+    const g = pickGuess(S, history, memo);
+    last = ALL_CODES[g];
+    const fb = oracle(last);
+    if (isWin(fb)) return { guesses: turn, last };
+    const key = keyOf(fb);
+    history += `${g}:${key};`;
+    S = S.filter((c) => consistency(g, c) === key);
+    if (S.length === 0) throw new Error(`no candidate is consistent with history ${history}`);
+  }
+  return { guesses: MAX_TRIES + 1, last };
+}
+
+function summarize(label: string, dist: number[]): string {
+  const total = dist.reduce((a, b) => a + b, 0);
+  const mean = dist.reduce((a, b, i) => a + b * i, 0) / total;
+  const worst = dist.length - 1 - [...dist].reverse().findIndex((n) => n > 0);
+  const hist = dist.map((n, i) => (n ? `${i}:${n}` : "")).filter(Boolean).join(" ");
+  return `${label}: ${total} games, worst ${worst} guesses, mean ${mean.toFixed(3)} (guesses:count ${hist})`;
+}
+
+describe("audit — solvability within MAX_TRIES (Knuth-style consistent solver)", () => {
+  it(
+    "cracks every one of the 5040 possible secrets within MAX_TRIES",
+    () => {
+      const FB = feedbackTable();
+      const memo = new Map<string, number>();
+      const dist: number[] = Array(MAX_TRIES + 2).fill(0);
+      for (let s = 0; s < N; s++) {
+        const secret = ALL_CODES[s];
+        const { guesses, last } = solve(
+          (guess) => scoreMastermind(guess, secret),
+          (g, c) => FB[g * N + c],
+          memo
+        );
+        expect(guesses, `secret ${secret.join("")}`).toBeLessThanOrEqual(MAX_TRIES);
+        expect(last, `secret ${secret.join("")}`).toEqual(secret);
+        dist[guesses]++;
+      }
+      console.log(summarize("mastermind solver, all 5040 secrets", dist));
+    },
+    30_000
+  );
+
+  it(
+    "wins every 2026 Daily seed and 300 numeric seeds, filtering candidates with the game's own scoring",
+    () => {
+      const memo = new Map<string, number>();
+      const dist: number[] = Array(MAX_TRIES + 2).fill(0);
+      for (const seed of auditSeeds()) {
+        const secret = generateSecret(makeRng(seed));
+        const { guesses, last } = solve(
+          (guess) => scoreMastermind(guess, secret),
+          (g, c) => keyOf(scoreMastermind(ALL_CODES[g], ALL_CODES[c])),
+          memo
+        );
+        expect(guesses, `seed ${seed} (secret ${secret.join("")})`).toBeLessThanOrEqual(MAX_TRIES);
+        expect(last, `seed ${seed}`).toEqual(secret);
+        dist[guesses]++;
+      }
+      console.log(summarize("mastermind solver, 2026 daily + 300 numeric seeds", dist));
+    },
+    30_000
+  );
 });

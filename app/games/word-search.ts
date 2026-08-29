@@ -11,6 +11,9 @@ import type { Rng } from "~/utils/rng";
 
 export const GRID_SIZE = 12;
 
+/** Number of target words in every puzzle. */
+export const WORD_COUNT = 8;
+
 /** All 8 compass directions: [deltaRow, deltaCol] */
 export const DIRS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
@@ -84,7 +87,8 @@ export interface PlacedWord {
 /**
  * Everything the Vue component needs after a grid is built.
  * `grid`       — 12×12 2-D array of uppercase letters (no blanks)
- * `wordList`   — the 8 chosen target words
+ * `wordList`   — the WORD_COUNT target words; always exactly the words that
+ *                were placed in the grid, so every listed word is findable
  * `bankLabel`  — display label for the selected theme
  * `placedWords`— authoritative position records for every placed word
  */
@@ -100,23 +104,57 @@ export interface GridResult {
 // ---------------------------------------------------------------------------
 
 /**
+ * Enumerate every position at which `word` can be written into the (square)
+ * `grid` without conflicting with letters already present: every start cell ×
+ * every one of the 8 directions that keeps the whole word inside the grid.
+ * A cell that is still empty (`""`) or already holds the required letter is
+ * acceptable, so words may cross each other on shared letters.
+ *
+ * The order is deterministic (DIRS order, then row, then column) so that
+ * picking an index with a seeded RNG stays reproducible.
+ */
+export function findPlacements(grid: string[][], word: string): PlacedWord[] {
+  const size = grid.length;
+  const options: PlacedWord[] = [];
+  for (const dir of DIRS) {
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const endR = r + dir[0] * (word.length - 1);
+        const endC = c + dir[1] * (word.length - 1);
+        if (endR < 0 || endR >= size || endC < 0 || endC >= size) continue;
+        let ok = true;
+        for (let i = 0; i < word.length; i++) {
+          const cell = grid[r + dir[0] * i][c + dir[1] * i];
+          if (cell !== "" && cell !== word[i]) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) options.push({ word, start: { r, c }, dir });
+      }
+    }
+  }
+  return options;
+}
+
+/**
  * Build a new Word Search puzzle using the given RNG.
  * Deterministic: the same RNG state always produces the same puzzle.
  *
- * The function accepts either:
- *   - an `Rng` object (e.g. `makeRng(seed)`) for direct use, or
- *   - a `seed` string/number/null and will call `makeRng` internally if you
- *     pass it via the overload — but callers should prefer passing an Rng so
- *     they control the stream themselves.
+ * Solvability guarantee: for each candidate word every legal placement is
+ * enumerated and one is chosen at random, so a word is only ever skipped when
+ * it fits nowhere (never because a bounded number of random attempts missed),
+ * and `wordList` is derived from the words that were actually placed.
+ *
+ * Callers pass an `Rng` (e.g. `makeRng(seed)`) so they control the stream.
  */
 export function buildGrid(rng: Rng): GridResult {
   const bankKey = rng.pick(Object.keys(BANKS));
   const bank = BANKS[bankKey];
 
-  // Pick ~8 words that fit inside the grid.
-  const eligible = bank.words.filter((w) => w.length <= GRID_SIZE);
-  const shuffled = rng.shuffle([...eligible]);
-  const chosen = shuffled.slice(0, 8);
+  // Candidate words in a seed-determined order; the first WORD_COUNT that can
+  // actually be placed become the puzzle's target words.
+  const candidates = rng.shuffle([...bank.words]);
 
   // Initialise empty grid.
   const g: string[][] = Array.from({ length: GRID_SIZE }, () =>
@@ -125,39 +163,19 @@ export function buildGrid(rng: Rng): GridResult {
 
   const placedWords: PlacedWord[] = [];
 
-  /** Try to place `word` in the grid; return true on success. */
-  function placeWord(word: string): boolean {
-    const maxR = GRID_SIZE - 1;
-    const maxC = GRID_SIZE - 1;
-    for (let t = 0; t < 200; t++) {
-      const dir = rng.pick(DIRS as Array<readonly [number, number]>);
-      const r = rng.int(0, maxR);
-      const c = rng.int(0, maxC);
-      const endR = r + dir[0] * (word.length - 1);
-      const endC = c + dir[1] * (word.length - 1);
-      if (endR < 0 || endR > maxR || endC < 0 || endC > maxC) continue;
-      // Verify no conflicting letters.
-      let ok = true;
-      for (let i = 0; i < word.length; i++) {
-        const gr = r + dir[0] * i;
-        const gc = c + dir[1] * i;
-        if (g[gr][gc] !== "" && g[gr][gc] !== word[i]) {
-          ok = false;
-          break;
-        }
-      }
-      if (!ok) continue;
-      // Write the word into the grid.
-      for (let i = 0; i < word.length; i++) {
-        g[r + dir[0] * i][c + dir[1] * i] = word[i];
-      }
-      placedWords.push({ word, start: { r, c }, dir });
-      return true;
+  for (const word of candidates) {
+    if (placedWords.length >= WORD_COUNT) break;
+    const options = findPlacements(g, word);
+    // A word that fits nowhere is skipped and the next candidate is tried.
+    if (options.length === 0) continue;
+    const placement = rng.pick(options);
+    for (let i = 0; i < word.length; i++) {
+      const r = placement.start.r + placement.dir[0] * i;
+      const c = placement.start.c + placement.dir[1] * i;
+      g[r][c] = word[i];
     }
-    return false;
+    placedWords.push(placement);
   }
-
-  for (const w of chosen) placeWord(w);
 
   // Fill remaining empty cells with random letters.
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -169,7 +187,8 @@ export function buildGrid(rng: Rng): GridResult {
 
   return {
     grid: g,
-    wordList: chosen,
+    // The list shown to the player is exactly what was placed.
+    wordList: placedWords.map((p) => p.word),
     bankLabel: bank.label,
     placedWords,
   };

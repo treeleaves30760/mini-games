@@ -82,19 +82,43 @@ function makeRule(rng: Rng, difficulty: PrimeHunterDifficulty): PrimeRule {
   return { kind: "threeDistinct", label: "找出所有含至少三種不同質因數的數" };
 }
 
+/** How many targets a board must contain: enough to hunt (at least 3, roughly one
+ *  per row) but never more than 45% of the cells, so the hunt stays selective. */
+function targetWindow(difficulty: PrimeHunterDifficulty): { total: number; lo: number; hi: number } {
+  const total = difficulty.size * difficulty.size;
+  return { total, lo: Math.max(3, difficulty.size - 1), hi: Math.floor(total * 0.45) };
+}
+
+/** `count` elements spread evenly across `list` (requires count <= list.length). */
+function spread(list: number[], count: number): number[] {
+  return Array.from({ length: count }, (_, i) => list[Math.floor((i * list.length) / count)]);
+}
+
 export function generatePrimeHunterPuzzle(rng: Rng, difficultyKey = "normal"): PrimeHunterPuzzle {
   const difficulty = getPrimeHunterDifficulty(difficultyKey);
+  const { total, lo, hi } = targetWindow(difficulty);
   for (let attempt = 0; attempt < 80; attempt++) {
     const rule = makeRule(rng, difficulty);
-    const numbers = Array.from({ length: difficulty.size * difficulty.size }, () => rng.int(difficulty.min, difficulty.max));
+    const numbers = Array.from({ length: total }, () => rng.int(difficulty.min, difficulty.max));
     const answers = numbers.map((n) => matchesPrimeRule(n, rule));
     const count = answers.filter(Boolean).length;
-    if (count >= Math.max(3, difficulty.size - 1) && count <= Math.floor(numbers.length * 0.45)) {
+    if (count >= lo && count <= hi) {
       return { difficulty: difficulty.key, size: difficulty.size, numbers, rule, answers };
     }
   }
+  // Safety net. No real seed gets here (random boards are accepted within a
+  // handful of attempts), but it must still be a fair board: assemble it from
+  // the range itself so the target count is guaranteed to land inside the same
+  // window. Every range holds far more targets and non-targets than needed for
+  // every rule (asserted in the tests), so no clamping is required.
   const rule = makeRule(rng, difficulty);
-  const numbers = Array.from({ length: difficulty.size * difficulty.size }, (_, i) => difficulty.min + i);
+  const targets: number[] = [];
+  const others: number[] = [];
+  for (let n = difficulty.min; n <= difficulty.max; n++) {
+    (matchesPrimeRule(n, rule) ? targets : others).push(n);
+  }
+  const want = Math.floor((lo + hi) / 2);
+  const numbers = rng.shuffle([...spread(targets, want), ...spread(others, total - want)]);
   return {
     difficulty: difficulty.key,
     size: difficulty.size,

@@ -2,6 +2,8 @@
    Classic 4-wide × 5-tall sliding-block puzzle.
    Shared by the Vue component and the Vitest suite. */
 
+import type { Rng } from "~/utils/rng";
+
 // ---- board constants ----
 export const COLS = 4;
 export const ROWS = 5;
@@ -22,16 +24,25 @@ export interface Block {
 
 export interface Layout {
   name: string;
+  /**
+   * Fewest moves that solve the layout when one move is a straight-line slide
+   * of a single block by any distance — exactly how the component counts a
+   * drag or a click-to-slide. Keyboard play (one cell per move) can only need
+   * more, so this is the true lower bound of the on-screen counter. Verified
+   * to be the exact BFS optimum by tests/games/klotski.test.ts.
+   */
+  minMoves: number;
   blocks: Block[];
 }
 
 /** An occupancy map: "r,c" → block id, covering every cell a block occupies. */
 export type OccupiedMap = Record<string, number>;
 
-// ---- two canonical, known-solvable layouts ----
+// ---- two canonical layouts; both proven solvable by the BFS in the test suite ----
 export const VALID_LAYOUTS: Layout[] = [
   {
     name: "橫刀立馬",
+    minMoves: 90, // 116 single-cell steps; 81 under the "turn corners" convention this game does not use
     blocks: [
       { id: 0, type: "2x2",  r: 0, c: 1 }, // Cao Cao
       { id: 1, type: "2x1v", r: 0, c: 0 },
@@ -47,6 +58,7 @@ export const VALID_LAYOUTS: Layout[] = [
   },
   {
     name: "百萬軍中",
+    minMoves: 67, // 90 single-cell steps
     blocks: [
       { id: 0, type: "2x2",  r: 0, c: 1 }, // Cao Cao
       { id: 1, type: "2x1v", r: 0, c: 0 },
@@ -61,6 +73,18 @@ export const VALID_LAYOUTS: Layout[] = [
     ],
   },
 ];
+
+// ---- layout selection ----
+
+/**
+ * Pick the layout for a new game from a seeded RNG. The Daily Challenge seeds
+ * with a "YYYY-MM-DD" string (same date → same layout); free play passes a
+ * null-seeded RNG for a random pick. Every bundled layout is solvable, so any
+ * seed yields a solvable puzzle.
+ */
+export function pickLayout(rng: Rng): Layout {
+  return rng.pick(VALID_LAYOUTS);
+}
 
 // ---- geometry ----
 

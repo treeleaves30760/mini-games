@@ -48,10 +48,13 @@ export const MAX_GUESSES = 6;
 
 export type LetterState = "correct" | "present" | "absent";
 
-/* The on-screen keyboard, laid out as the gojūon (五十音) plus the dakuten and
-   handakuten rows. Also the single source of truth for which kana are legal in a
-   guess — every answer character must appear here (asserted in the tests). */
-export const KANA_ROWS: readonly string[][] = [
+/* The on-screen keyboard exactly as the component renders it: a 5-column gojūon
+   (五十音) grid (null = an empty grid cell, so や/ゆ/よ and わ/を sit in their
+   traditional columns) plus the dakuten/handakuten block. This is the single
+   source of truth for which kana can be entered — the legal-guess set below is
+   derived from it, so an answer can never contain a kana the player cannot
+   type (asserted per answer in the tests). */
+export const KEYBOARD_SEION: readonly (string | null)[][] = [
   ["あ", "い", "う", "え", "お"],
   ["か", "き", "く", "け", "こ"],
   ["さ", "し", "す", "せ", "そ"],
@@ -59,9 +62,12 @@ export const KANA_ROWS: readonly string[][] = [
   ["な", "に", "ぬ", "ね", "の"],
   ["は", "ひ", "ふ", "へ", "ほ"],
   ["ま", "み", "む", "め", "も"],
-  ["や", "ゆ", "よ"],
+  ["や", null, "ゆ", null, "よ"],
   ["ら", "り", "る", "れ", "ろ"],
-  ["わ", "を", "ん"],
+  ["わ", null, null, null, "を"],
+  ["ん", null, null, null, null],
+];
+export const KEYBOARD_DAKUTEN: readonly string[][] = [
   ["が", "ぎ", "ぐ", "げ", "ご"],
   ["ざ", "じ", "ず", "ぜ", "ぞ"],
   ["だ", "ぢ", "づ", "で", "ど"],
@@ -69,7 +75,12 @@ export const KANA_ROWS: readonly string[][] = [
   ["ぱ", "ぴ", "ぷ", "ぺ", "ぽ"],
 ];
 
-/** Every kana the game accepts in a guess. */
+/** The keyboard rows with the grid gaps removed — just the kana, in layout order. */
+export const KANA_ROWS: readonly string[][] = [...KEYBOARD_SEION, ...KEYBOARD_DAKUTEN].map(
+  (row) => row.filter((k): k is string => k !== null),
+);
+
+/** Every kana the game accepts in a guess — exactly the keys on the keyboard. */
 export const KANA: ReadonlySet<string> = new Set(KANA_ROWS.flat());
 
 /* Curated answers: everyday 4-mora words, each written with four standalone
@@ -667,6 +678,36 @@ export function isValidGuess(s: string): boolean {
   return chars.length === WORD_LENGTH && chars.every((c) => KANA.has(c));
 }
 
+/**
+ * The "guess N / MAX" counter for the HUD, given the index of the active row.
+ * Clamped to [1, MAX_GUESSES]: after a loss the row index advances past the
+ * last row, and the raw `row + 1` would read "7 / 6".
+ */
+export function guessNumber(currentRow: number): number {
+  return Math.max(1, Math.min(currentRow + 1, MAX_GUESSES));
+}
+
+const KEY_PRIORITY: Readonly<Record<LetterState, number>> = { correct: 3, present: 2, absent: 1 };
+
+/**
+ * Fold one scored guess into the keyboard colours. A key only ever moves up the
+ * ladder absent → present → correct, so a kana that was once confirmed in place
+ * stays green even if a later guess (or a duplicate in the same guess) scores it
+ * lower. Returns a new map; the input is not mutated.
+ */
+export function mergeKeyStates(
+  prev: Readonly<Record<string, LetterState>>,
+  guess: string,
+  states: readonly LetterState[],
+): Record<string, LetterState> {
+  const next: Record<string, LetterState> = { ...prev };
+  [...String(guess)].forEach((k, i) => {
+    const cur = next[k];
+    if (!cur || KEY_PRIORITY[states[i]] > KEY_PRIORITY[cur]) next[k] = states[i];
+  });
+  return next;
+}
+
 /** Pick a puzzle word from the curated pool using a seeded RNG. */
 export function pickWord(rng: Rng): JpWord {
   return rng.pick(WORDS as JpWord[]);
@@ -693,6 +734,16 @@ const ROMAJI: Readonly<Record<string, string>> = {
   pa: "ぱ", pi: "ぴ", pu: "ぷ", pe: "ぺ", po: "ぽ",
 };
 
+/* Consonants that can follow a bare "n" and still start a syllable of their own.
+   Standard wāpuro rule: "n" + one of these is ん, so "ninjin" → にんじん without
+   having to type "ninnjinn". Vowels, "y" and "n" are deliberately excluded —
+   they may still combine with the pending "n" (na/ni/…, nya…, nn). */
+const N_BREAK_CONSONANTS: ReadonlySet<string> = new Set(
+  Object.keys(ROMAJI)
+    .map((k) => k[0])
+    .filter((c) => !"aiueony".includes(c)),
+);
+
 /**
  * Convert a romaji buffer into kana, greedily matching the longest token first.
  * Returns the completed kana and any trailing `rest` that is still an incomplete
@@ -714,9 +765,24 @@ export function parseRomaji(buf: string): { kana: string[]; rest: string } {
         break;
       }
     }
+    // A bare "n" directly before another consonant can only be ん (see above).
+    if (!hit && lower[i] === "n" && i + 1 < lower.length && N_BREAK_CONSONANTS.has(lower[i + 1])) {
+      hit = "ん";
+      len = 1;
+    }
     if (!hit) break; // incomplete/unknown syllable starts here — leave it as rest
     kana.push(hit);
     i += len;
   }
   return { kana, rest: lower.slice(i) };
+}
+
+/**
+ * Commit-time conversion, used when the player submits with romaji still
+ * buffered: a trailing bare "n" (they typed "…kaidan" and pressed Enter) is ん,
+ * and any other unfinished fragment is dropped. Returns just the kana.
+ */
+export function flushRomaji(buf: string): string[] {
+  const { kana, rest } = parseRomaji(buf);
+  return rest === "n" ? [...kana, "ん"] : kana;
 }

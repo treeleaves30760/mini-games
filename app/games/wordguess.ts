@@ -87,6 +87,59 @@ export function definitionOf(word: string, pack: WordPack): string | null {
   return pack.definitions[String(word).toUpperCase()] ?? null;
 }
 
+// ---- round rules shared with the component ---------------------------------
+
+/** Why a guess cannot be submitted, or null when it is playable. */
+export type GuessProblem = "short" | "unknown";
+
+/**
+ * Validate a typed guess: it must fill every tile of the row and be a word the
+ * pack accepts. Case-insensitive. Anything longer than the pack's length can
+ * never be in its dictionary, so it reports "unknown".
+ */
+export function validateGuess(guess: string, pack: WordPack): GuessProblem | null {
+  const g = String(guess).toUpperCase();
+  if (g.length < pack.length) return "short";
+  return isValidWord(g, pack) ? null : "unknown";
+}
+
+const KEY_PRIORITY: Record<LetterState, number> = { correct: 3, present: 2, absent: 1 };
+
+/**
+ * Fold one scored guess into the on-screen keyboard's colour map. A key only
+ * ever upgrades (absent → present → correct), so a letter once found in place
+ * stays green even if a later guess misplaces it. Returns a new map; `states`
+ * is the scoreGuess() result for `guess`, so the two line up index by index.
+ */
+export function mergeKeyStates(
+  prev: Readonly<Record<string, LetterState>>,
+  guess: string,
+  states: LetterState[],
+): Record<string, LetterState> {
+  const next: Record<string, LetterState> = { ...prev };
+  const g = String(guess).toUpperCase();
+  const n = Math.min(g.length, states.length);
+  for (let i = 0; i < n; i++) {
+    const k = g.charAt(i);
+    const s = states[i] as LetterState;
+    const cur = next[k];
+    if (!cur || KEY_PRIORITY[s] > KEY_PRIORITY[cur]) next[k] = s;
+  }
+  return next;
+}
+
+export type RoundOutcome = "won" | "lost" | "playing";
+
+/**
+ * Where the round stands once row `row` (0-based) has been scored: an exact
+ * match wins outright; otherwise the round is lost when the last of
+ * `maxGuesses` rows has just been used, and stays open before that.
+ */
+export function roundOutcome(states: LetterState[], row: number, maxGuesses: number): RoundOutcome {
+  if (isWin(states)) return "won";
+  return row + 1 >= maxGuesses ? "lost" : "playing";
+}
+
 // ---- on-demand per-length data loading -------------------------------------
 
 interface RawPack {

@@ -21,6 +21,11 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     globals: false,
+    // Several suites prove solvability by running an exhaustive/independent
+    // solver over hundreds of seeds (Hashi, Flood, Minesweeper, Make 24, …).
+    // They finish in a second or two on their own, but v8 coverage
+    // instrumentation slows them several-fold — well past Vitest's 5s default.
+    testTimeout: 120000,
     coverage: {
       provider: "v8",
       // Coverage targets the framework-free pure-logic modules — the layer the

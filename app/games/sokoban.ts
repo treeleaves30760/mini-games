@@ -278,13 +278,17 @@ export type UndoResult =
 
 /**
  * Pop the most recent history entry and return the restored state.
- * If history is empty returns { kind: "empty" }.
+ * The move counter is decremented, and so is the push counter when the undone
+ * move was a push. If history is empty returns { kind: "empty" }.
  */
 export function applyUndo(state: SokobanState): UndoResult {
   if (state.history.length === 0) return { kind: "empty" };
 
   const history = [...state.history];
   const prev = history.pop()!;
+  // Only a push changes box positions, so a snapshot that differs from the
+  // current boxes means the undone move was a push.
+  const wasPush = prev.boxes.some((b, i) => b.x !== state.boxes[i].x || b.y !== state.boxes[i].y);
 
   const newState: SokobanState = {
     ...state,
@@ -293,6 +297,7 @@ export function applyUndo(state: SokobanState): UndoResult {
     boxes: prev.boxes,
     history,
     moves: Math.max(0, state.moves - 1),
+    pushes: wasPush ? Math.max(0, state.pushes - 1) : state.pushes,
     won: false,
   };
   return { kind: "undone", state: newState };

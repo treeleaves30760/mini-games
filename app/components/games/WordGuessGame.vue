@@ -8,8 +8,11 @@
 import {
   WORD_LENGTHS,
   DEFAULT_LENGTH,
+  guessesFor,
   scoreGuess,
-  isValidWord,
+  validateGuess,
+  mergeKeyStates,
+  roundOutcome,
   pickAnswer,
   definitionOf,
   loadWordPack,
@@ -32,7 +35,7 @@ const emit = defineEmits(["solved"]);
 
 // ---- state ----
 const length = ref(DEFAULT_LENGTH);
-const maxGuesses = ref(length.value + 1);
+const maxGuesses = ref(guessesFor(length.value));
 const pack = ref(null);
 const loading = ref(true);
 
@@ -59,7 +62,12 @@ function makeEmptyBoard(rows) {
 
 // ---- seed / daily / length ----
 let rng;
+// Monotonic round id. A regenerate() that a newer one has superseded (rapid
+// length switches), or a guess whose reveal animation outlives its round
+// ("新題目" clicked mid-flip), must not touch the new round's state.
+let round = 0;
 async function regenerate() {
+  const id = ++round;
   const len = props.daily ? DEFAULT_LENGTH : length.value;
   length.value = len;
   loading.value = true;
@@ -67,7 +75,7 @@ async function regenerate() {
   overlay.open = false;
 
   const loaded = await loadWordPack(len);
-  if (length.value !== len) return; // a newer length switch superseded this one
+  if (id !== round) return; // a newer round superseded this one
 
   pack.value = loaded;
   maxGuesses.value = loaded.maxGuesses;
@@ -129,42 +137,38 @@ async function animateReveal(row, states) {
 async function submitGuess() {
   if (gameState.value !== "playing" || busy.value || !pack.value) return;
   const guess = currentInput.value.join("");
-  if (guess.length < length.value) {
-    showToast(`再填滿 ${length.value} 個字母`);
-    triggerShake(currentRow.value);
-    return;
-  }
-  if (!isValidWord(guess, pack.value)) {
-    showToast("不在詞庫中");
+  const problem = validateGuess(guess, pack.value);
+  if (problem) {
+    showToast(problem === "short" ? `再填滿 ${length.value} 個字母` : "不在詞庫中");
     triggerShake(currentRow.value);
     return;
   }
 
   const states = scoreGuess(guess, answer.value);
   const row = currentRow.value;
+  const id = round; // the round this guess belongs to
   boardRows.value[row].letters = guess.split("").map((ch) => ({ ch, state: "pre" }));
   boardRows.value[row].locked = true;
 
   busy.value = true;
   await animateReveal(row, states);
+  // A new round started during the reveal: regenerate() has already reset the
+  // board and `busy`, so this guess must not bleed into the new round.
+  if (id !== round) return;
   busy.value = false;
 
   // Update key colours only after the reveal, so they don't spoil the flip.
-  const priority = { correct: 3, present: 2, absent: 1 };
-  for (let i = 0; i < guess.length; i++) {
-    const k = guess[i];
-    const cur = keyStates.value[k];
-    if (!cur || priority[states[i]] > priority[cur]) keyStates.value[k] = states[i];
-  }
+  keyStates.value = mergeKeyStates(keyStates.value, guess, states);
 
-  if (guess === answer.value) {
+  const outcome = roundOutcome(states, row, maxGuesses.value);
+  if (outcome === "won") {
     finish(true, row);
     return;
   }
 
   currentRow.value++;
   currentInput.value = [];
-  if (currentRow.value >= maxGuesses.value) finish(false, row);
+  if (outcome === "lost") finish(false, row);
 }
 
 function finish(won, row) {

@@ -9,7 +9,7 @@ import {
   computePowered,
   isSolved,
 } from "~/games/pipes";
-import { makeRng } from "~/utils/rng";
+import { makeRng, todaySeed } from "~/utils/rng";
 
 // ---- rotateCW ----
 describe("rotateCW", () => {
@@ -316,20 +316,14 @@ describe("isSolved", () => {
     }
   });
 
-  it("returns false for the initial (scrambled) grid when at least one cell differs", () => {
-    // Most seeds will produce a scrambled start ≠ solved
-    let checkedFalse = 0;
+  it("returns false for the initial (scrambled) grid", () => {
+    // This used to skip seeds whose scramble coincided with the solution.
+    // generateGrid now nudges such a scramble one extra quarter turn (see the
+    // "scramble guard" suite below), so the start is never a winning layout.
     for (const seed of ["seed-1", "seed-2", "seed-3", "seed-4", "seed-5"]) {
-      const { initial, solved, srcR, srcC, size: G } = generateGrid(7, makeRng(seed));
-      // If initial equals solved (all rotations happened to be 0), skip.
-      const same = initial.every((row, r) => row.every((m, c) => m === solved[r][c]));
-      if (!same) {
-        expect(isSolved(initial, G, srcR, srcC)).toBe(false);
-        checkedFalse++;
-      }
+      const { initial, srcR, srcC, size: G } = generateGrid(7, makeRng(seed));
+      expect(isSolved(initial, G, srcR, srcC), `seed ${seed}`).toBe(false);
     }
-    // Ensure we actually tested at least one seed
-    expect(checkedFalse).toBeGreaterThan(0);
   });
 
   it("rotating one tile away from solution breaks isSolved", () => {
@@ -424,5 +418,428 @@ describe("connectivity invariant", () => {
         expect(isSolved(solved, G, srcR, srcC), `${G}×${G} seed ${seed}`).toBe(true);
       }
     }
+  });
+});
+
+// =========================================================================
+// Independent verifier + solver, written from the rules shown to the player
+// =========================================================================
+//
+// The side panel says: tap to rotate a tile; connect every pipe, leave no open
+// end, and make the whole board reach the central source. Encoded here without
+// calling computePowered/isSolved, so the two implementations check each other:
+//   (1) every connector meets a matching connector on the neighbouring tile —
+//       no open end, nothing pointing off the board;
+//   (2) walking along matched connectors from the source visits every tile.
+// Nothing compares against the stored solution: any layout obeying (1)+(2) wins.
+
+const UP = 1, RIGHT = 2, DOWN = 4, LEFT = 8;
+
+/** Quarter turn clockwise, written independently of rotateCW. */
+function turn(mask: number): number {
+  return (
+    (mask & UP ? RIGHT : 0) |
+    (mask & RIGHT ? DOWN : 0) |
+    (mask & DOWN ? LEFT : 0) |
+    (mask & LEFT ? UP : 0)
+  );
+}
+
+/** The distinct masks a tile can show by rotating it (1, 2 or 4 of them). */
+function orientations(mask: number): number[] {
+  const out: number[] = [];
+  let m = mask;
+  for (let k = 0; k < 4; k++) {
+    if (!out.includes(m)) out.push(m);
+    m = turn(m);
+  }
+  return out;
+}
+
+/** Rules (1) + (2). */
+function verifyRules(cells: number[][], G: number, sr: number, sc: number): boolean {
+  for (let r = 0; r < G; r++) {
+    for (let c = 0; c < G; c++) {
+      const m = cells[r][c];
+      if ((m & UP) && (r === 0 || !(cells[r - 1][c] & DOWN))) return false;
+      if ((m & DOWN) && (r === G - 1 || !(cells[r + 1][c] & UP))) return false;
+      if ((m & LEFT) && (c === 0 || !(cells[r][c - 1] & RIGHT))) return false;
+      if ((m & RIGHT) && (c === G - 1 || !(cells[r][c + 1] & LEFT))) return false;
+    }
+  }
+  const seen = new Set<number>([sr * G + sc]);
+  const stack = [sr * G + sc];
+  while (stack.length) {
+    const i = stack.pop()!;
+    const r = Math.floor(i / G);
+    const c = i % G;
+    const m = cells[r][c];
+    // Rule (1) already holds, so every connector leads to an in-grid tile that points back.
+    const next = [
+      m & UP ? i - G : -1,
+      m & DOWN ? i + G : -1,
+      m & LEFT ? i - 1 : -1,
+      m & RIGHT ? i + 1 : -1,
+    ];
+    for (const j of next) {
+      if (j >= 0 && !seen.has(j)) {
+        seen.add(j);
+        stack.push(j);
+      }
+    }
+  }
+  return seen.size === G * G;
+}
+
+/**
+ * Backtracking solver over per-tile rotations. Tiles are fixed in row-major
+ * order; a candidate orientation must agree with the fixed tiles above and to
+ * the left and must not point off the board. Once a tile is boxed in by fixed
+ * tiles, its group is inspected: a group with no connector left toward an
+ * unfixed tile can never grow, so it must be the source's group and must
+ * already hold every tile — otherwise the branch is dead. Returns up to `limit`
+ * layouts satisfying verifyRules.
+ */
+function solveAll(start: number[][], G: number, sr: number, sc: number, limit = 1): number[][][] {
+  const n = G * G;
+  const cur = new Array<number>(n).fill(0);
+  const fixed = new Array<boolean>(n).fill(false);
+  const options = start.flat().map(orientations);
+  const found: number[][][] = [];
+
+  function groupIsDeadEnd(from: number): boolean {
+    const seen = new Set<number>([from]);
+    const stack = [from];
+    while (stack.length) {
+      const i = stack.pop()!;
+      const r = Math.floor(i / G);
+      const c = i % G;
+      const m = cur[i];
+      const next = [
+        m & UP ? i - G : -1,
+        m & DOWN ? i + G : -1,
+        m & LEFT ? i - 1 : -1,
+        m & RIGHT ? i + 1 : -1,
+      ];
+      for (const j of next) {
+        if (j < 0) continue;
+        if (!fixed[j]) return false; // still open toward an unfixed tile
+        if (!seen.has(j)) {
+          seen.add(j);
+          stack.push(j);
+        }
+      }
+    }
+    return !seen.has(sr * G + sc) || seen.size !== n;
+  }
+
+  function place(i: number): boolean {
+    if (i === n) {
+      const grid = Array.from({ length: G }, (_, r) => cur.slice(r * G, r * G + G));
+      if (verifyRules(grid, G, sr, sc)) found.push(grid);
+      return found.length >= limit;
+    }
+    const r = Math.floor(i / G);
+    const c = i % G;
+    const needUp = r > 0 && (cur[i - G] & DOWN) !== 0;
+    const needLeft = c > 0 && (cur[i - 1] & RIGHT) !== 0;
+    for (const m of options[i]) {
+      if (((m & UP) !== 0) !== needUp) continue;
+      if (((m & LEFT) !== 0) !== needLeft) continue;
+      if (r === G - 1 && (m & DOWN)) continue;
+      if (c === G - 1 && (m & RIGHT)) continue;
+      cur[i] = m;
+      fixed[i] = true;
+      // The tile above is now boxed in; at the end of a row so is this tile.
+      const dead = (r > 0 && groupIsDeadEnd(i - G)) || (c === G - 1 && groupIsDeadEnd(i));
+      if (!dead && place(i + 1)) return true;
+      fixed[i] = false;
+    }
+    return false;
+  }
+
+  place(0);
+  return found;
+}
+
+const sameGrid = (a: number[][], b: number[][]) =>
+  a.every((row, r) => row.every((m, c) => m === b[r][c]));
+
+/** Rotate the first tile whose shape changes under a quarter turn; returns the copy. */
+function breakOneTile(cells: number[][]): number[][] {
+  const out = cells.map((row) => [...row]);
+  for (let r = 0; r < out.length; r++) {
+    for (let c = 0; c < out[r].length; c++) {
+      if (turn(out[r][c]) !== out[r][c]) {
+        out[r][c] = turn(out[r][c]);
+        return out;
+      }
+    }
+  }
+  throw new Error("no rotatable tile");
+}
+
+// Sizes exactly as PipesGame.vue offers them: 簡單 5×5, 普通 7×7, 困難 9×9;
+// the Daily Challenge (props.daily) always uses 7×7 with a "YYYY-MM-DD" seed.
+const UI_SIZES = [5, 7, 9];
+const DAILY_SIZE = 7;
+const SWEEP_SEEDS = Array.from({ length: 300 }, (_, i) => `pipes-${i}`);
+const DAILY_SEEDS: string[] = [];
+for (const y of [2025, 2026, 2027]) {
+  for (let d = new Date(y, 0, 1); d.getFullYear() === y; d.setDate(d.getDate() + 1)) {
+    DAILY_SEEDS.push(todaySeed(d));
+  }
+}
+
+describe("independent verifier matches the module's encoding", () => {
+  it("uses the same direction bits as the module", () => {
+    expect([UP, RIGHT, DOWN, LEFT]).toEqual([N, E, S, W]);
+  });
+
+  it("turn() agrees with rotateCW for every 4-bit mask", () => {
+    for (let m = 0; m < 16; m++) expect(turn(m)).toBe(rotateCW(m));
+  });
+
+  it("orientations(): cross 1, straight 2, everything else 4 (empty tile 1)", () => {
+    expect(orientations(N | E | S | W)).toHaveLength(1);
+    expect(orientations(N | S)).toHaveLength(2);
+    expect(orientations(E | W)).toHaveLength(2);
+    expect(orientations(N)).toHaveLength(4);
+    expect(orientations(N | E)).toHaveLength(4);
+    expect(orientations(N | E | S)).toHaveLength(4);
+    expect(orientations(0)).toEqual([0]);
+  });
+
+  it("verifyRules agrees with isSolved on hand-made layouts", () => {
+    // 2×2 path, source at (1,1) — wins.
+    const path = [
+      [E, W | S],
+      [E, N | W],
+    ];
+    // Two mutual pairs, but the top pair never reaches the source — no win.
+    const twoIslands = [
+      [E, W],
+      [E, W],
+    ];
+    // Everything reaches the source, but (0,0) has an open end pointing up.
+    const openEnd = [
+      [N | E, W | S],
+      [E, N | W],
+    ];
+    // (0,1) points down at a tile that does not point back.
+    const mismatch = [
+      [E, W | S],
+      [E, W],
+    ];
+    for (const [cells, win] of [
+      [path, true],
+      [twoIslands, false],
+      [openEnd, false],
+      [mismatch, false],
+    ] as [number[][], boolean][]) {
+      expect(verifyRules(cells, 2, 1, 1)).toBe(win);
+      expect(isSolved(cells, 2, 1, 1)).toBe(win);
+    }
+  });
+
+  it("solver finds the unique layout of a scrambled 2×2 path and none for an impossible board", () => {
+    const scrambled = [
+      [S, N | E],
+      [W, S | E],
+    ];
+    const sols = solveAll(scrambled, 2, 1, 1, 10);
+    expect(sols).toHaveLength(1);
+    expect(sols[0]).toEqual([
+      [E, W | S],
+      [E, N | W],
+    ]);
+    // A T-piece needs three in-grid neighbours; a 2×2 corner has two.
+    const impossible = [
+      [N | E | S, W],
+      [E, W],
+    ];
+    expect(solveAll(impossible, 2, 1, 1, 10)).toHaveLength(0);
+  });
+});
+
+describe("every generated puzzle is solvable and the win check accepts the solutions", () => {
+  it(`300 seeds × ${UI_SIZES.join("/")}: solver finds a layout; isSolved agrees; start is unsolved`, () => {
+    let puzzles = 0;
+    for (const G of UI_SIZES) {
+      for (const seed of SWEEP_SEEDS) {
+        const { solved, initial, srcR, srcC, size } = generateGrid(G, makeRng(seed));
+        const tag = `${G}×${G} seed ${seed}`;
+        expect(size).toBe(G);
+        // (d) nothing degenerate: every tile carries 1–4 pipe ends, and the total
+        // number of ends is exactly two per spanning-tree edge.
+        let ends = 0;
+        for (let r = 0; r < G; r++) {
+          for (let c = 0; c < G; c++) {
+            expect(solved[r][c], `${tag} solved[${r}][${c}]`).toBeGreaterThanOrEqual(1);
+            expect(solved[r][c], `${tag} solved[${r}][${c}]`).toBeLessThanOrEqual(15);
+            ends += ALL_DIRS.filter((d) => solved[r][c] & d).length;
+            expect(orientations(solved[r][c]), `${tag} initial[${r}][${c}]`).toContain(initial[r][c]);
+          }
+        }
+        expect(ends, `${tag} pipe ends`).toBe(2 * (G * G - 1));
+        // (a) the independent solver finds a valid layout from the scrambled start.
+        const sols = solveAll(initial, G, srcR, srcC, 1);
+        expect(sols, `${tag} has no solution`).toHaveLength(1);
+        expect(verifyRules(sols[0], G, srcR, srcC), `${tag} solver layout`).toBe(true);
+        // (b) the win check accepts the solver's layout and the stored solution …
+        expect(isSolved(sols[0], G, srcR, srcC), `${tag} isSolved(solver layout)`).toBe(true);
+        expect(verifyRules(solved, G, srcR, srcC), `${tag} stored solution`).toBe(true);
+        expect(isSolved(solved, G, srcR, srcC), `${tag} isSolved(stored)`).toBe(true);
+        // … and rejects a layout that is one quarter turn away from winning.
+        expect(isSolved(breakOneTile(sols[0]), G, srcR, srcC), `${tag} broken layout`).toBe(false);
+        // (c) the scrambled start is never already a win.
+        expect(verifyRules(initial, G, srcR, srcC), `${tag} start`).toBe(false);
+        expect(isSolved(initial, G, srcR, srcC), `${tag} isSolved(start)`).toBe(false);
+        puzzles++;
+      }
+    }
+    expect(puzzles).toBe(UI_SIZES.length * SWEEP_SEEDS.length);
+  });
+
+  it(`Daily Challenge: every "YYYY-MM-DD" seed of 2025–2027 at ${DAILY_SIZE}×${DAILY_SIZE} is solvable and starts unsolved`, () => {
+    expect(DAILY_SEEDS.length).toBe(365 * 3);
+    for (const seed of DAILY_SEEDS) {
+      const { solved, initial, srcR, srcC } = generateGrid(DAILY_SIZE, makeRng(seed));
+      const sols = solveAll(initial, DAILY_SIZE, srcR, srcC, 1);
+      expect(sols, `daily ${seed} has no solution`).toHaveLength(1);
+      expect(isSolved(sols[0], DAILY_SIZE, srcR, srcC), `daily ${seed}`).toBe(true);
+      expect(isSolved(solved, DAILY_SIZE, srcR, srcC), `daily ${seed} stored`).toBe(true);
+      expect(isSolved(initial, DAILY_SIZE, srcR, srcC), `daily ${seed} start`).toBe(false);
+    }
+  });
+
+  it("the same daily seed reproduces the same puzzle (shared challenge)", () => {
+    const a = generateGrid(DAILY_SIZE, makeRng("2026-08-29"));
+    const b = generateGrid(DAILY_SIZE, makeRng("2026-08-29"));
+    expect(a).toEqual(b);
+  });
+});
+
+describe("win check accepts any layout that obeys the rules, not just the stored one", () => {
+  // A 3×3 "pinwheel": cross in the centre, an elbow on each side, a leaf in each
+  // corner. Each elbow can hook either adjacent corner, so the mirror image of
+  // the pinwheel is a second, equally valid layout of the very same tiles.
+  //
+  //
+  //     A:  ╻ ┏━╸        B:  ╺━┓ ╻
+  //         ┗━╋━┓            ┏━╋━┛
+  //         ╺━┛ ╹            ╹ ┗━╸
+  const PINWHEEL_A = [
+    [S, E | S, W],
+    [N | E, N | E | S | W, S | W],
+    [E, N | W, N],
+  ];
+  const PINWHEEL_B = [
+    [E, S | W, S],
+    [E | S, N | E | S | W, N | W],
+    [N, N | E, W],
+  ];
+
+  it("both pinwheel layouts satisfy the rules and the win check", () => {
+    expect(sameGrid(PINWHEEL_A, PINWHEEL_B)).toBe(false);
+    for (const layout of [PINWHEEL_A, PINWHEEL_B]) {
+      expect(verifyRules(layout, 3, 1, 1)).toBe(true);
+      expect(isSolved(layout, 3, 1, 1)).toBe(true);
+    }
+    // Same tile shapes cell by cell.
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        expect(orientations(PINWHEEL_A[r][c])).toContain(PINWHEEL_B[r][c]);
+      }
+    }
+  });
+
+  it("the solver finds exactly these two layouts from a scrambled pinwheel", () => {
+    const scrambled = PINWHEEL_A.map((row) => row.map((m) => turn(turn(m))));
+    expect(isSolved(scrambled, 3, 1, 1)).toBe(false);
+    const sols = solveAll(scrambled, 3, 1, 1, 10);
+    expect(sols).toHaveLength(2);
+    expect(sols.some((s) => sameGrid(s, PINWHEEL_A))).toBe(true);
+    expect(sols.some((s) => sameGrid(s, PINWHEEL_B))).toBe(true);
+  });
+
+  it("generated puzzles with two valid layouts: isSolved accepts the one that is not stored", () => {
+    // With the current generator, 7×7 seeds pipes-188 / pipes-190 / pipes-241
+    // and 9×9 seed pipes-145 each admit a second layout (all other sweep
+    // puzzles are unique). The player may build either one and must win.
+    let withAlternative = 0;
+    for (const G of UI_SIZES) {
+      for (const seed of SWEEP_SEEDS) {
+        const { solved, initial, srcR, srcC } = generateGrid(G, makeRng(seed));
+        const sols = solveAll(initial, G, srcR, srcC, 8);
+        expect(sols.some((s) => sameGrid(s, solved)), `${G}×${G} ${seed}: stored solution not found`).toBe(true);
+        for (const s of sols) {
+          if (sameGrid(s, solved)) continue;
+          withAlternative++;
+          expect(verifyRules(s, G, srcR, srcC), `${G}×${G} ${seed} alternative`).toBe(true);
+          expect(isSolved(s, G, srcR, srcC), `${G}×${G} ${seed}: isSolved rejects a valid alternative`).toBe(true);
+        }
+      }
+    }
+    expect(withAlternative).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("scramble guard: the player never starts on a winning layout", () => {
+  it("2×2 seed 539: the raw scramble coincided with the solution and is nudged one quarter turn", () => {
+    // Found by scanning numeric seeds: without the guard, seed 539 (and the
+    // string seed "s157") scrambles [[E|S, S|W],[N, N]] by 0 turns everywhere.
+    for (const seed of [539, "s157"]) {
+      const { solved, initial, srcR, srcC } = generateGrid(2, makeRng(seed));
+      expect(solved).toEqual([
+        [E | S, S | W],
+        [N, N],
+      ]);
+      // (0,0) is the first tile that changes under a quarter turn, so it is the one nudged.
+      expect(initial).toEqual([
+        [rotateCW(E | S), S | W],
+        [N, N],
+      ]);
+      expect(isSolved(initial, 2, srcR, srcC)).toBe(false);
+      expect(verifyRules(initial, 2, srcR, srcC)).toBe(false);
+      // Still solvable: rotating (0,0) back wins, and the solver agrees.
+      const sols = solveAll(initial, 2, srcR, srcC, 5);
+      expect(sols).toHaveLength(1);
+      expect(sols[0]).toEqual(solved);
+    }
+  });
+
+  it("3×3 seed \"s8413\": same guard on a larger board", () => {
+    const { solved, initial, srcR, srcC } = generateGrid(3, makeRng("s8413"));
+    expect(solved).toEqual([
+      [E, E | W, S | W],
+      [E | S, W, N | S],
+      [N | E, E | W, N | W],
+    ]);
+    expect(initial).toEqual([
+      [rotateCW(E), E | W, S | W],
+      [E | S, W, N | S],
+      [N | E, E | W, N | W],
+    ]);
+    expect(isSolved(initial, 3, srcR, srcC)).toBe(false);
+    expect(solveAll(initial, 3, srcR, srcC, 5)).toEqual([solved]);
+  });
+
+  it("no seed in 0..2999 starts solved on 2×2, 3×3 or 4×4 boards", () => {
+    // Without the guard roughly 1 in 256 2×2 scrambles would start solved.
+    for (const G of [2, 3, 4]) {
+      for (let seed = 0; seed < 3000; seed++) {
+        const { initial, srcR, srcC } = generateGrid(G, makeRng(seed));
+        expect(isSolved(initial, G, srcR, srcC), `${G}×${G} seed ${seed}`).toBe(false);
+      }
+    }
+  });
+
+  it("1×1 board (never offered by the UI) is a single empty tile and trivially solved", () => {
+    const grid = generateGrid(1, makeRng("one"));
+    expect(grid).toEqual({ size: 1, solved: [[0]], initial: [[0]], srcR: 0, srcC: 0 });
+    // Nothing to connect and no tile whose shape changes under rotation, so
+    // the guard has nothing to nudge and the board stays trivially solved.
+    expect(isSolved(grid.initial, 1, 0, 0)).toBe(true);
   });
 });

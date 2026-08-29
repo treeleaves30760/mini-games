@@ -7,7 +7,14 @@
    using the standard peg-counting algorithm:
      exact (A)    = right digit, right position (claimed first)
      misplaced (B) = right digit, wrong position (min over each digit of remaining counts)
-   A digit guessed more times than it appears in the secret is never over-credited. */
+   A digit guessed more times than it appears in the secret is never over-credited.
+
+   Fairness: the secret is a uniformly random CODE_LEN-permutation of the DIGIT_COUNT
+   digits — exactly the constraint the UI enforces on guesses — and every one of the
+   10·9·8·7 = 5040 possible secrets can be cracked within MAX_TRIES: an optimal (Knuth
+   minimax) player needs at most 7 guesses, and even the simpler "guess any candidate
+   consistent with all feedback so far" strategy needs at most 8. Both facts are
+   checked exhaustively in tests/games/mastermind.test.ts. */
 
 import type { Rng } from "~/utils/rng";
 

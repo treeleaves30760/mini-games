@@ -180,7 +180,7 @@ onBeforeUnmount(() => { stopTimer(); });
         <div class="panel__group">
           <span class="panel__legend">目標步數</span>
           <p class="hint">
-            「目標」欄顯示打亂時使用的按壓次數，是理論上的參考解法步數。<br />
+            「目標」欄顯示打亂時實際生效的按壓次數（同一格按兩次會互相抵銷），是理論上的參考解法步數。<br />
             實際上可能存在更短的解法！
           </p>
         </div>

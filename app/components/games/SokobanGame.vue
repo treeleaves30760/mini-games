@@ -108,12 +108,14 @@ function move(dx, dy) {
 function undo() {
   if (history.value.length === 0) return;
   const prev = history.value.pop();
+  // Only a push changes box positions: a differing snapshot means we undid a push.
+  const wasPush = prev.boxes.some((b, i) => b.x !== boxes.value[i].x || b.y !== boxes.value[i].y);
   playerX.value = prev.px;
   playerY.value = prev.py;
   boxes.value = prev.boxes;
   moves.value = Math.max(0, moves.value - 1);
+  if (wasPush) pushes.value = Math.max(0, pushes.value - 1);
   if (won.value) { won.value = false; overlay.open = false; }
-  // recalc pushes from scratch isn't worth it; just decrement if we undid a push
 }
 
 function checkWin() {

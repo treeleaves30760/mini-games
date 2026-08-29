@@ -81,7 +81,17 @@ export function generateFractionBalancePuzzle(rng: Rng, difficultyKey = "normal"
     solutionSigns.push(difficulty.allowNegative && solution.length > 1 && rng.bool() ? -1 : 1);
   }
 
-  const target = signedSum(solution, solution.map((c) => c.id), solutionSigns) ?? rat(1, 2)!;
+  const solutionIds = solution.map((c) => c.id);
+  // Every solution id is in `solution`, so signedSum can never return null here.
+  let target = signedSum(solution, solutionIds, solutionSigns)!;
+  if (target.n === 0) {
+    // The empty right pan already sums to 0, so a zero target would look balanced before
+    // the first card is placed. Only reachable with subtraction (hard/expert): flipping the
+    // last sign moves the target to -2 x that card, which is never zero as cards are nonzero.
+    const last = difficulty.slots - 1;
+    solutionSigns[last] = -solutionSigns[last] as 1 | -1;
+    target = signedSum(solution, solutionIds, solutionSigns)!;
+  }
   const cards = [...solution];
   let distractorId = 0;
   while (cards.length < difficulty.slots + difficulty.distractors) {
@@ -97,7 +107,7 @@ export function generateFractionBalancePuzzle(rng: Rng, difficultyKey = "normal"
     difficulty: difficulty.key,
     target,
     cards,
-    solutionIds: solution.map((c) => c.id),
+    solutionIds,
     solutionSigns,
     slots: difficulty.slots,
   };

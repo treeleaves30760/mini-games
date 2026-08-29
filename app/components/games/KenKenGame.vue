@@ -1,6 +1,7 @@
 <script setup>
 import {
   KENKEN_DIFFICULTIES,
+  cageEdges,
   cageLabel,
   cageSatisfied,
   cellHasDuplicate,
@@ -33,6 +34,12 @@ const kenGridStyle = computed(() => {
     "--ken-value-font": n <= 4 ? "2.1rem" : n === 5 ? "1.9rem" : n === 6 ? "1.65rem" : "1.42rem",
     "--ken-cage-font": n <= 4 ? "0.78rem" : n === 5 ? "0.72rem" : n === 6 ? "0.66rem" : "0.58rem",
   };
+});
+// Cage outlines: which sides of each cell border another cage (or the grid edge).
+const edges = computed(() => {
+  const p = puzzle.value;
+  if (!p) return [];
+  return Array.from({ length: p.size * p.size }, (_, i) => cageEdges(p, i));
 });
 
 function rng() {
@@ -131,6 +138,10 @@ onMounted(generate);
               :class="{
                 'is-selected': selected === i,
                 'is-error': cellError(i),
+                'is-edge-top': edges[i]?.top,
+                'is-edge-right': edges[i]?.right,
+                'is-edge-bottom': edges[i]?.bottom,
+                'is-edge-left': edges[i]?.left,
               }"
               :aria-label="`第 ${Math.floor(i / size) + 1} 行第 ${(i % size) + 1} 列`"
               @click="selected = i"
@@ -236,6 +247,23 @@ onMounted(generate);
   overflow: hidden;
   cursor: pointer;
   transition: transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+/* Cage outline: thick accent edges wherever a cell borders another cage or the grid. */
+.ken-cell.is-edge-top {
+  border-top-width: 3px;
+  border-top-color: var(--accent);
+}
+.ken-cell.is-edge-right {
+  border-right-width: 3px;
+  border-right-color: var(--accent);
+}
+.ken-cell.is-edge-bottom {
+  border-bottom-width: 3px;
+  border-bottom-color: var(--accent);
+}
+.ken-cell.is-edge-left {
+  border-left-width: 3px;
+  border-left-color: var(--accent);
 }
 .ken-cell:hover,
 .ken-cell:focus-visible {

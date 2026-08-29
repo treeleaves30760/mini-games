@@ -88,15 +88,16 @@ export function generateShikaku(
 ): GenerateResult {
   const leaves: Rect[] = [];
 
-  // Stopping probability: high for small pieces so 2-cell dominoes rarely
+  // Stopping probability for a piece that already fits under the cap. The call
+  // site only asks for 2 <= area <= maxArea (1×1 pieces stop unconditionally,
+  // oversized pieces always split), and the clamp keeps the result inside
+  // [0.66, 0.94] for any input: high for small pieces so 2-cell dominoes rarely
   // shatter into 1×1s; eased down for cap-sized pieces so they sometimes break
-  // up and feed the mid-range.
+  // up and feed the mid-range. The divisor is floored at 1 so maxArea = 2
+  // (a dominoes-only puzzle) cannot divide by zero.
   function pStop(area: number): number {
-    // istanbul ignore start
-    if (area > maxArea) return 0; // dead: call site short-circuits when area>maxArea
-    if (area <= 1) return 1;     // dead: area===1 only when h===w===1, which short-circuits first
-    // istanbul ignore stop
-    return Math.min(0.94, Math.max(0.66, 0.96 - (0.3 * (area - 2)) / (maxArea - 2)));
+    const span = Math.max(1, maxArea - 2);
+    return Math.min(0.94, Math.max(0.66, 0.96 - (0.3 * (area - 2)) / span));
   }
 
   // Centre-biased cut (mean of two uniform draws) → balanced pieces, few slivers.
@@ -151,11 +152,18 @@ export function generateShikaku(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true when the player's rectangles form a complete, valid solution:
- *  - every rect is valid (exactly one clue, area matches)
- *  - their combined area equals rows × cols (full coverage with no overlaps,
- *    since each individual rect has already been validated)
- *  - the number of rects equals the number of clues (one rect per clue)
+ * Returns true when the player's rectangles form a complete, valid solution.
+ * This checks the RULES rather than identity with the generated solution, so
+ * any valid partition of the grid is accepted (Shikaku puzzles often admit
+ * more than one):
+ *  - every rect lies inside the grid and is well-formed (r0 <= r1, c0 <= c1)
+ *  - every rect is valid (exactly one clue, area equals that clue)
+ *  - the rects form an exact cover: every cell is claimed by exactly one rect
+ *    (no overlaps, no gaps)
+ * Summing rect areas is not enough on its own — two valid rects that overlap
+ * can add up to rows × cols while leaving a cell uncovered — so coverage is
+ * tracked per cell. An exact cover by single-clue rects also forces one rect
+ * per clue, so no separate count check is needed.
  */
 export function isSolved(
   playerRects: readonly Rect[],
@@ -163,11 +171,22 @@ export function isSolved(
   rows: number,
   cols: number
 ): boolean {
-  const total = rows * cols;
-  let covered = 0;
+  const covered = new Uint8Array(rows * cols);
   for (const R of playerRects) {
+    if (R.r0 < 0 || R.c0 < 0 || R.r1 >= rows || R.c1 >= cols || R.r0 > R.r1 || R.c0 > R.c1) {
+      return false;
+    }
     if (!rectIsValid(R, clues)) return false;
-    covered += areaOf(R);
+    for (let r = R.r0; r <= R.r1; r++) {
+      for (let c = R.c0; c <= R.c1; c++) {
+        const i = r * cols + c;
+        if (covered[i]) return false; // overlap
+        covered[i] = 1;
+      }
+    }
   }
-  return covered === total && playerRects.length === clues.length;
+  for (let i = 0; i < covered.length; i++) {
+    if (!covered[i]) return false; // gap
+  }
+  return true;
 }

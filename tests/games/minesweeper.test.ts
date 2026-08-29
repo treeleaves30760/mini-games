@@ -1,13 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
   buildBoard,
+  buildNoGuessBoard,
   floodReveal,
   isWin,
   isMine,
   neighbors,
   cellIdx,
   cellRc,
+  solveBoard,
+  SOLVER_UNKNOWN,
+  SOLVER_OPEN,
+  SOLVER_MINE,
+  NO_GUESS_ATTEMPTS,
 } from "~/games/minesweeper";
+import type { Board } from "~/games/minesweeper";
 import { makeRng } from "~/utils/rng";
 
 // ---------------------------------------------------------------------------
@@ -22,6 +29,83 @@ function beginnerBoard(safeR = 4, safeC = 4, seed: string | number = "test-seed"
 /** Count mines in `board`. */
 function countMines(board: ReturnType<typeof buildBoard>) {
   return board.cells.filter((c) => c.mine).length;
+}
+
+/** The three presets offered by the UI (DIFFS in MinesweeperGame.vue). */
+const DIFFICULTIES = [
+  { name: "beginner", rows: 9, cols: 9, mines: 10 },
+  { name: "intermediate", rows: 16, cols: 16, mines: 40 },
+  { name: "expert", rows: 16, cols: 30, mines: 99 },
+];
+
+/** First-click positions: four corners, four edge midpoints and the centre. */
+function clickPositions(rows: number, cols: number): Array<[number, number]> {
+  const mr = Math.floor(rows / 2);
+  const mc = Math.floor(cols / 2);
+  return [
+    [0, 0], [0, cols - 1], [rows - 1, 0], [rows - 1, cols - 1],
+    [0, mc], [rows - 1, mc], [mr, 0], [mr, cols - 1],
+    [mr, mc],
+  ];
+}
+
+/** Build a Board from ASCII rows ('*' = mine, anything else = safe). */
+function boardFromAscii(rowsAscii: string[]): Board {
+  const rows = rowsAscii.length;
+  const cols = rowsAscii[0].length;
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      cells.push({ mine: rowsAscii[r][c] === "*", revealed: false, flagged: false, count: 0 });
+    }
+  }
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      if (cells[i].mine) continue;
+      cells[i].count = neighbors(rows, cols, r, c).filter((ni) => cells[ni].mine).length;
+    }
+  }
+  return { cells, rows, cols };
+}
+
+/** Mine layout as a string, for cheap equality checks. */
+function mineMap(board: Board): string {
+  return board.cells.map((c) => (c.mine ? "*" : ".")).join("");
+}
+
+/**
+ * Independent check of every first-click guarantee on a freshly built board.
+ * Returns a list of violations (empty when the board is fair).
+ */
+function fairnessViolations(board: Board, r: number, c: number, mines: number): string[] {
+  const { cells, rows, cols } = board;
+  const bad: string[] = [];
+  const first = r * cols + c;
+  const zone = [first, ...neighbors(rows, cols, r, c)];
+
+  if (countMines(board) !== mines) bad.push(`mine count ${countMines(board)} !== ${mines}`);
+  for (const i of zone) if (cells[i].mine) bad.push(`mine inside safe zone at ${i}`);
+  if (cells[first].count !== 0) bad.push(`first click count ${cells[first].count} !== 0`);
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i].mine) continue;
+    const [cr, cc] = cellRc(cols, i);
+    const actual = neighbors(rows, cols, cr, cc).filter((ni) => cells[ni].mine).length;
+    if (cells[i].count !== actual) bad.push(`count mismatch at ${i}`);
+  }
+
+  floodReveal(board, r, c);
+  for (const i of zone) if (!cells[i].revealed) bad.push(`safe-zone cell ${i} not opened by first click`);
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    if (cell.mine && cell.revealed) bad.push(`flood revealed mine at ${i}`);
+    if (!cell.revealed || cell.count !== 0) continue;
+    const [cr, cc] = cellRc(cols, i);
+    for (const ni of neighbors(rows, cols, cr, cc)) {
+      if (!cells[ni].revealed) bad.push(`neighbour ${ni} of revealed zero ${i} still hidden`);
+    }
+  }
+  return bad;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +239,13 @@ describe("buildBoard() — mine count", () => {
     const rng = makeRng("rng-seed");
     const b = buildBoard(9, 9, 10, 4, 4, rng);
     expect(countMines(b)).toBe(10);
+  });
+
+  it("accepts null / undefined seeds (free play) and still builds a fair board", () => {
+    for (const seed of [null, undefined]) {
+      const b = buildBoard(9, 9, 10, 4, 4, seed);
+      expect(fairnessViolations(b, 4, 4, 10)).toEqual([]);
+    }
   });
 });
 
@@ -356,6 +447,49 @@ describe("floodReveal()", () => {
     // Board state unchanged
     expect(b.cells).toEqual(snapshot);
   });
+
+  it("calling floodReveal on a flagged cell is a no-op", () => {
+    const b = beginnerBoard();
+    b.cells[4 * 9 + 4].flagged = true;
+    const snapshot = b.cells.map((c) => ({ ...c }));
+    floodReveal(b, 4, 4);
+    expect(b.cells).toEqual(snapshot);
+  });
+
+  it("a flagged safe cell inside a zero region stays hidden and stops the cascade there", () => {
+    // Deterministic layout: the whole board is one zero region except the
+    // bottom-right corner mine. Flagging (1,1) must leave exactly that cell
+    // hidden while every other safe cell still opens (it is reachable around
+    // the flag).
+    const b = boardFromAscii([
+      ".....",
+      ".....",
+      ".....",
+      ".....",
+      "....*",
+    ]);
+    b.cells[1 * 5 + 1].flagged = true;
+    floodReveal(b, 0, 0);
+    for (let i = 0; i < b.cells.length; i++) {
+      const cell = b.cells[i];
+      if (cell.mine || cell.flagged) expect(cell.revealed, `cell ${i}`).toBe(false);
+      else expect(cell.revealed, `cell ${i}`).toBe(true);
+    }
+  });
+
+  it("revealing a mine directly exposes only that mine (no cascade)", () => {
+    // The component marks the clicked mine itself, but the flood must also be
+    // safe if it is ever pointed at a mine: the mine is revealed and nothing
+    // else, because a mine's count of 0 must not be treated as an empty cell.
+    const b = boardFromAscii([
+      "...",
+      ".*.",
+      "...",
+    ]);
+    floodReveal(b, 1, 1);
+    expect(b.cells.filter((c) => c.revealed)).toHaveLength(1);
+    expect(b.cells[4].revealed).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -398,6 +532,42 @@ describe("isWin()", () => {
     // Mines still unrevealed
     expect(b.cells.filter((c) => c.mine && !c.revealed).length).toBeGreaterThan(0);
     expect(isWin(b)).toBe(true);
+  });
+
+  it("flags are irrelevant: winning never requires flagging mines, and flags on mines do not hurt", () => {
+    const b = beginnerBoard();
+    for (const cell of b.cells) if (!cell.mine) cell.revealed = true;
+    expect(b.cells.some((c) => c.flagged)).toBe(false);
+    expect(isWin(b)).toBe(true);
+    for (const cell of b.cells) if (cell.mine) cell.flagged = true;
+    expect(isWin(b)).toBe(true);
+  });
+
+  it("a flagged (but hidden) safe cell does not count as cleared", () => {
+    const b = beginnerBoard();
+    for (const cell of b.cells) if (!cell.mine) cell.revealed = true;
+    const safe = b.cells.find((c) => !c.mine)!;
+    safe.revealed = false;
+    safe.flagged = true;
+    expect(isWin(b)).toBe(false);
+  });
+
+  it("holds for every UI difficulty after a genuine full clear from the opening", () => {
+    // Clear the board the way a player would — flood from the opening, then
+    // reveal each remaining safe cell one click at a time — and check that the
+    // win fires exactly when the last safe cell opens and not before.
+    for (const d of DIFFICULTIES) {
+      const b = buildBoard(d.rows, d.cols, d.mines, Math.floor(d.rows / 2), Math.floor(d.cols / 2), `clear-${d.name}`);
+      floodReveal(b, Math.floor(d.rows / 2), Math.floor(d.cols / 2));
+      for (let i = 0; i < b.cells.length; i++) {
+        if (b.cells[i].mine || b.cells[i].revealed) continue;
+        expect(isWin(b)).toBe(false);
+        const [r, c] = cellRc(d.cols, i);
+        floodReveal(b, r, c);
+      }
+      expect(isWin(b)).toBe(true);
+      expect(b.cells.filter((c) => c.mine && c.revealed)).toHaveLength(0);
+    }
   });
 });
 
@@ -458,5 +628,352 @@ describe("end-to-end game flow", () => {
     floodReveal(b, 2, 2);
     // Center should be revealed
     expect(b.cells[2 * 5 + 2].revealed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fairness guarantees — every UI difficulty × many seeds × many first clicks
+// ---------------------------------------------------------------------------
+
+describe("fairness guarantees across seeds × difficulties × first clicks", () => {
+  it("every UI preset leaves room for a full 3×3 opening (mines ≤ cells − 9)", () => {
+    for (const d of DIFFICULTIES) {
+      expect(d.mines, d.name).toBeLessThanOrEqual(d.rows * d.cols - 9);
+    }
+  });
+
+  it.each(DIFFICULTIES)(
+    "$name: exact mine count, mine-free opening, zero first click, sound flood — 150 seeds × 9 clicks",
+    (d) => {
+      const positions = clickPositions(d.rows, d.cols);
+      for (let seed = 0; seed < 150; seed++) {
+        for (const [r, c] of positions) {
+          const b = buildBoard(d.rows, d.cols, d.mines, r, c, `fair-${d.name}-${seed}`);
+          expect(fairnessViolations(b, r, c, d.mines), `seed=${seed} click=(${r},${c})`).toEqual([]);
+        }
+      }
+    },
+  );
+
+  it("numeric seeds get the same guarantees", () => {
+    for (const d of DIFFICULTIES) {
+      for (let seed = 1; seed <= 50; seed++) {
+        const b = buildBoard(d.rows, d.cols, d.mines, 0, d.cols - 1, seed);
+        expect(fairnessViolations(b, 0, d.cols - 1, d.mines), `${d.name} seed=${seed}`).toEqual([]);
+      }
+    }
+  });
+
+  it("clamps the mine count when the board has no room outside the opening", () => {
+    // 3×3 with the centre as the opening: every cell is in the safe zone.
+    const tiny = buildBoard(3, 3, 20, 1, 1, "tiny");
+    expect(countMines(tiny)).toBe(0);
+    floodReveal(tiny, 1, 1);
+    expect(isWin(tiny)).toBe(true);
+
+    // 4×4 with a corner opening: 4 safe cells, so at most 12 mines fit.
+    const corner = buildBoard(4, 4, 100, 0, 0, "corner");
+    expect(countMines(corner)).toBe(12);
+    for (const i of [0, 1, 4, 5]) expect(corner.cells[i].mine).toBe(false);
+    expect(corner.cells[0].count).toBe(0);
+
+    // 1×1: nothing but the opening.
+    expect(countMines(buildBoard(1, 1, 5, 0, 0, "one"))).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Daily Challenge determinism
+// ---------------------------------------------------------------------------
+
+describe("Daily Challenge determinism", () => {
+  const DATES = ["2026-08-29", "2026-01-01", "2025-12-31", "2028-02-29"];
+
+  it("a date seed + the same first click always yields the same board (raw builder)", () => {
+    for (const d of DIFFICULTIES) {
+      const r = Math.floor(d.rows / 2), c = Math.floor(d.cols / 2);
+      for (const date of DATES) {
+        const a = buildBoard(d.rows, d.cols, d.mines, r, c, date);
+        // Build unrelated boards in between to prove there is no hidden state.
+        buildBoard(d.rows, d.cols, d.mines, 0, 0, `${date}-other`);
+        const b = buildBoard(d.rows, d.cols, d.mines, r, c, date);
+        expect(mineMap(a)).toBe(mineMap(b));
+      }
+    }
+  });
+
+  it("a date seed + the same first click always yields the same no-guess board", () => {
+    for (const d of DIFFICULTIES) {
+      const r = Math.floor(d.rows / 2), c = Math.floor(d.cols / 2);
+      for (const date of DATES) {
+        const a = buildNoGuessBoard(d.rows, d.cols, d.mines, r, c, date);
+        buildNoGuessBoard(d.rows, d.cols, d.mines, 0, 0, `${date}-other`);
+        const b = buildNoGuessBoard(d.rows, d.cols, d.mines, r, c, date);
+        expect(mineMap(a)).toBe(mineMap(b));
+        expect(solveBoard(a, r, c).solved).toBe(true);
+      }
+    }
+  });
+
+  it("the component's daily board (beginner, centre opening) is a fair, solvable, 10-mine board", () => {
+    // MinesweeperGame.vue always opens the centre of a 9×9/10 board in daily
+    // mode, so every player of a given date sees this exact board.
+    for (const date of DATES) {
+      const b = buildNoGuessBoard(9, 9, 10, 4, 4, date);
+      expect(fairnessViolations(b, 4, 4, 10)).toEqual([]);
+      expect(solveBoard(b, 4, 4).solved).toBe(true);
+    }
+  });
+
+  it("a pre-built Rng seeded the same way gives the same no-guess board as the raw seed", () => {
+    const a = buildNoGuessBoard(16, 30, 99, 8, 15, makeRng("2026-08-29"));
+    const b = buildNoGuessBoard(16, 30, 99, 8, 15, "2026-08-29");
+    expect(mineMap(a)).toBe(mineMap(b));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// solveBoard() — deterministic single-point + subset + global-count solver
+// ---------------------------------------------------------------------------
+
+describe("solveBoard()", () => {
+  it("is sound: only ever opens safe cells and only ever marks real mines", () => {
+    for (const d of DIFFICULTIES) {
+      const starts: Array<[number, number]> = [[Math.floor(d.rows / 2), Math.floor(d.cols / 2)], [0, 0]];
+      for (let seed = 0; seed < 100; seed++) {
+        for (const [r, c] of starts) {
+          const b = buildBoard(d.rows, d.cols, d.mines, r, c, `sound-${d.name}-${seed}`);
+          const res = solveBoard(b, r, c);
+          let opened = 0;
+          for (let i = 0; i < b.cells.length; i++) {
+            if (res.state[i] === SOLVER_OPEN) {
+              opened++;
+              expect(b.cells[i].mine, `opened a mine at ${i}`).toBe(false);
+            } else if (res.state[i] === SOLVER_MINE) {
+              expect(b.cells[i].mine, `marked a safe cell at ${i}`).toBe(true);
+            } else {
+              expect(res.state[i]).toBe(SOLVER_UNKNOWN);
+            }
+          }
+          expect(res.revealed).toBe(opened);
+          expect(res.safeCells).toBe(d.rows * d.cols - d.mines);
+          expect(res.revealed).toBeLessThanOrEqual(res.safeCells);
+          expect(res.solved).toBe(res.revealed === res.safeCells);
+        }
+      }
+    }
+  });
+
+  it("starts from exactly the player's opening: every cell floodReveal opens is open for the solver", () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const b = buildBoard(16, 16, 40, 8, 8, `opening-${seed}`);
+      const res = solveBoard(b, 8, 8);
+      floodReveal(b, 8, 8);
+      for (let i = 0; i < b.cells.length; i++) {
+        if (b.cells[i].revealed) expect(res.state[i]).toBe(SOLVER_OPEN);
+      }
+    }
+  });
+
+  it("does not mutate the board", () => {
+    const b = buildBoard(9, 9, 10, 4, 4, "immutable");
+    const snapshot = b.cells.map((c) => ({ ...c }));
+    solveBoard(b, 4, 4);
+    expect(b.cells).toEqual(snapshot);
+  });
+
+  it("single-point rule: a number whose remaining mines are 0 opens the rest, one whose need equals its hidden cells marks them", () => {
+    // Opening at (0,0) floods rows 0–1. (1,3) reads 1 with a single hidden
+    // neighbour (2,2) → mine; then (1,2) has need 0 → (2,1) safe, etc.
+    const b = boardFromAscii([
+      ".....",
+      ".....",
+      "*.*..",
+    ]);
+    const res = solveBoard(b, 0, 0);
+    expect(res.solved).toBe(true);
+    expect(res.state[2 * 5 + 0]).toBe(SOLVER_MINE);
+    expect(res.state[2 * 5 + 2]).toBe(SOLVER_MINE);
+    expect(res.state[2 * 5 + 1]).toBe(SOLVER_OPEN);
+  });
+
+  it("subset rule (safe branch): a 1 next to a 1 with one extra hidden cell proves that cell safe", () => {
+    // Row 1 reads 1 1 2 1 1 with row 2 fully hidden; no single-point move
+    // exists (every need is strictly between 0 and the hidden count). The
+    // hidden set of (1,0) {20,21} ⊂ that of (1,1) {20,21,22} with equal needs,
+    // so (2,2) is safe — after which the board resolves.
+    const b = boardFromAscii([
+      ".....",
+      ".....",
+      ".*.*.",
+    ]);
+    const res = solveBoard(b, 0, 0);
+    expect(res.solved).toBe(true);
+    expect(res.state[2 * 5 + 1]).toBe(SOLVER_MINE);
+    expect(res.state[2 * 5 + 3]).toBe(SOLVER_MINE);
+  });
+
+  it("subset rule (mine branch): a 1 next to a 2 with one extra hidden cell proves that cell a mine", () => {
+    // Row 1 reads 1 2 1 2 1; again no single-point move. (1,0) {20,21} need 1
+    // ⊂ (1,1) {20,21,22} need 2 → (2,2) is a mine, then everything follows.
+    const b = boardFromAscii([
+      ".....",
+      ".....",
+      "*.*.*",
+    ]);
+    const res = solveBoard(b, 0, 0);
+    expect(res.solved).toBe(true);
+    expect(res.state[2 * 5 + 2]).toBe(SOLVER_MINE);
+    expect(res.state[2 * 5 + 1]).toBe(SOLVER_OPEN);
+    expect(res.state[2 * 5 + 3]).toBe(SOLVER_OPEN);
+  });
+
+  it("global count (safe branch): once all mines are accounted for, an isolated pocket is safe", () => {
+    // A full wall of mines on row 2 is deduced by single point; rows 3–4 are
+    // then only reachable through the mine counter (0 mines left).
+    const b = boardFromAscii([
+      ".....",
+      ".....",
+      "*****",
+      ".....",
+      ".....",
+    ]);
+    const res = solveBoard(b, 0, 0);
+    expect(res.solved).toBe(true);
+    for (let i = 15; i < 25; i++) expect(res.state[i]).toBe(SOLVER_OPEN);
+  });
+
+  it("global count (mine branch): when the remaining mines equal the hidden cells, they are all mines", () => {
+    const b = boardFromAscii([
+      "...",
+      "...",
+      "***",
+      "***",
+    ]);
+    const res = solveBoard(b, 0, 0);
+    expect(res.solved).toBe(true);
+    for (let i = 6; i < 12; i++) expect(res.state[i]).toBe(SOLVER_MINE);
+  });
+
+  it("reports a genuine 50/50 as unsolved without guessing", () => {
+    // Two 1s over two hidden cells sharing one mine — undecidable.
+    const b = boardFromAscii([
+      "..",
+      "..",
+      "*.",
+    ]);
+    const res = solveBoard(b, 0, 0);
+    expect(res.solved).toBe(false);
+    expect(res.revealed).toBe(4);
+    expect(res.safeCells).toBe(5);
+    expect(res.state[4]).toBe(SOLVER_UNKNOWN);
+    expect(res.state[5]).toBe(SOLVER_UNKNOWN);
+  });
+
+  it("measures how often raw boards are no-guess solvable (documented rates)", () => {
+    // Measured with 300 seeds per preset from the centre opening:
+    //   beginner 251/300 (83.7%), intermediate 170/300 (56.7%),
+    //   expert 19/300 (6.3%); from a corner: 232, 145 and 15 of 300.
+    // The bounds below are deliberately loose so a tweak to the RNG or solver
+    // does not flake the suite; the exact figures are for the record.
+    const floors: Record<string, number> = { beginner: 0.75, intermediate: 0.45, expert: 0.03 };
+    for (const d of DIFFICULTIES) {
+      const r = Math.floor(d.rows / 2), c = Math.floor(d.cols / 2);
+      let solved = 0;
+      for (let seed = 0; seed < 300; seed++) {
+        if (solveBoard(buildBoard(d.rows, d.cols, d.mines, r, c, `m-${seed}`), r, c).solved) solved++;
+      }
+      expect(solved / 300, `${d.name}: ${solved}/300`).toBeGreaterThanOrEqual(floors[d.name]);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildNoGuessBoard() — bounded, seed-deterministic no-guess generator
+// ---------------------------------------------------------------------------
+
+describe("buildNoGuessBoard()", () => {
+  it.each(DIFFICULTIES)(
+    "$name: every seed × every first click yields a fair board solvable without guessing",
+    (d) => {
+      for (let seed = 0; seed < 25; seed++) {
+        for (const [r, c] of clickPositions(d.rows, d.cols)) {
+          const b = buildNoGuessBoard(d.rows, d.cols, d.mines, r, c, `ng-${d.name}-${seed}`);
+          expect(solveBoard(b, r, c).solved, `seed=${seed} click=(${r},${c})`).toBe(true);
+          expect(fairnessViolations(b, r, c, d.mines), `seed=${seed} click=(${r},${c})`).toEqual([]);
+        }
+      }
+    },
+  );
+
+  it("never draws more than maxAttempts candidate boards", () => {
+    // Every candidate costs exactly one shuffle, so counting shuffles bounds the work.
+    for (const maxAttempts of [1, 3, NO_GUESS_ATTEMPTS]) {
+      for (let seed = 0; seed < 20; seed++) {
+        const inner = makeRng(`budget-${seed}`);
+        let shuffles = 0;
+        const counting = { ...inner, shuffle: <T>(arr: T[]) => { shuffles++; return inner.shuffle(arr); } };
+        buildNoGuessBoard(16, 30, 99, 8, 15, counting, maxAttempts);
+        expect(shuffles).toBeGreaterThanOrEqual(1);
+        expect(shuffles).toBeLessThanOrEqual(maxAttempts);
+      }
+    }
+    expect(NO_GUESS_ATTEMPTS).toBe(200);
+  });
+
+  it("stops at the first solvable candidate, which is the raw board when that one is solvable", () => {
+    for (let seed = 0; seed < 100; seed++) {
+      const raw = buildBoard(9, 9, 10, 4, 4, `first-${seed}`);
+      const ng = buildNoGuessBoard(9, 9, 10, 4, 4, `first-${seed}`);
+      if (solveBoard(raw, 4, 4).solved) expect(mineMap(ng)).toBe(mineMap(raw));
+      else expect(mineMap(ng)).not.toBe(mineMap(raw));
+    }
+  });
+
+  it("with maxAttempts = 1 it is exactly the raw builder", () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const raw = buildBoard(16, 30, 99, 8, 15, `one-${seed}`);
+      const ng = buildNoGuessBoard(16, 30, 99, 8, 15, `one-${seed}`, 1);
+      expect(mineMap(ng)).toBe(mineMap(raw));
+    }
+  });
+
+  it("falls back to the candidate the solver got furthest on when the budget runs out", () => {
+    // Replay the seeded stream by hand: with a tiny budget on expert, find seeds
+    // where no candidate is solvable and check the returned board is the first
+    // candidate with the highest revealed count.
+    const budget = 4;
+    let exhausted = 0;
+    let improved = 0;
+    for (let seed = 0; seed < 40 && exhausted < 10; seed++) {
+      const rng = makeRng(`fallback-${seed}`);
+      const candidates = Array.from({ length: budget }, () => buildBoard(16, 30, 99, 8, 15, rng));
+      const results = candidates.map((b) => solveBoard(b, 8, 15));
+      if (results.some((r) => r.solved)) continue;
+      exhausted++;
+      let bestIdx = 0;
+      for (let k = 1; k < budget; k++) {
+        if (results[k].revealed > results[bestIdx].revealed) { bestIdx = k; improved++; }
+      }
+      const ng = buildNoGuessBoard(16, 30, 99, 8, 15, `fallback-${seed}`, budget);
+      expect(mineMap(ng)).toBe(mineMap(candidates[bestIdx]));
+      expect(countMines(ng)).toBe(99);
+    }
+    expect(exhausted).toBe(10);
+    expect(improved).toBeGreaterThan(0);
+  });
+
+  it("returns a valid best-effort board when no layout can be solvable", () => {
+    // 5×5 with 16 mines and a corner opening: only 9 safe cells, essentially
+    // never deducible, so the whole budget is spent and the best try is kept.
+    const b = buildNoGuessBoard(5, 5, 16, 0, 0, "dense", 8);
+    expect(countMines(b)).toBe(16);
+    expect(fairnessViolations(b, 0, 0, 16)).toEqual([]);
+  });
+
+  it("a board with no room for mines is trivially solvable", () => {
+    const b = buildNoGuessBoard(3, 3, 20, 1, 1, "tiny");
+    expect(countMines(b)).toBe(0);
+    expect(solveBoard(b, 1, 1).solved).toBe(true);
   });
 });

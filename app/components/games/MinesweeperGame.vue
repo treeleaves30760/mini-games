@@ -1,9 +1,9 @@
 <script setup>
-/* 踩地雷 Minesweeper — seeded board, safe-center first-click, flood-reveal.
-   Left-click reveal, right-click flag, 🚩 toggle button for touch. */
+/* 踩地雷 Minesweeper — seeded no-guess board, safe-center first-click,
+   flood-reveal. Left-click reveal, right-click flag, 🚩 toggle button for touch. */
 
 import {
-  buildBoard as msBuildBoard,
+  buildNoGuessBoard as msBuildNoGuessBoard,
   floodReveal as msFloodReveal,
   neighbors as msNeighbors,
   isWin as msIsWin,
@@ -62,7 +62,10 @@ function neighbors(r, c) {
 }
 
 function buildBoard(safeR, safeC) {
-  const board = msBuildBoard(rows.value, cols.value, mineCount.value, safeR, safeC, props.seed);
+  // Draws candidate boards from the seeded stream until one is solvable by
+  // pure deduction from the opening at (safeR, safeC) — bounded and
+  // deterministic per seed, so no seed forces the player to guess.
+  const board = msBuildNoGuessBoard(rows.value, cols.value, mineCount.value, safeR, safeC, props.seed);
   cells.value = board.cells;
 }
 
@@ -163,8 +166,18 @@ function initBoard() {
   checkWin();
 }
 
+function loadBest() {
+  // Best times are stored per difficulty, so reload whenever it changes.
+  try {
+    bestTime.value = +(localStorage.getItem(BEST_KEY + "." + diffIdx.value) || 0) || null;
+  } catch (_) {
+    bestTime.value = null;
+  }
+}
+
 function setDiff(i) {
   diffIdx.value = i;
+  loadBest();
   initBoard();
 }
 
@@ -184,9 +197,7 @@ function cellLabel(cell) {
 watch(() => props.seed, () => { initBoard(); });
 
 onMounted(() => {
-  try {
-    bestTime.value = +(localStorage.getItem(BEST_KEY + "." + diffIdx.value) || 0) || null;
-  } catch (_) {}
+  loadBest();
   initBoard();
 });
 
@@ -308,7 +319,7 @@ onBeforeUnmount(() => { stopTimer(); });
         </div>
         <div class="panel__group">
           <span class="panel__legend">小提示</span>
-          <p class="hint">開局第一次點擊的附近 3×3 格保證安全，放心點下去！</p>
+          <p class="hint">開局會自動翻開中央的安全區域；盤面產生時已確認只靠數字推理就能全部解開，不必猜運氣。</p>
         </div>
       </aside>
     </div>

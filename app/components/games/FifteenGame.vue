@@ -20,7 +20,7 @@ const props = defineProps({
 const emit = defineEmits(["solved"]);
 
 // ---- pure game logic (unit-tested in app/games/fifteen.ts) ----
-import { isSolved as isBoardSolved, blankPos, legalMoves, applyMove, generateBoard } from "~/games/fifteen";
+import { isSolved as isBoardSolved, slideRun, generateBoard } from "~/games/fifteen";
 
 const sizeKey = ref("4");
 const tiles = ref([]); // flat array, blank is 0
@@ -108,40 +108,15 @@ const timeStr = computed(() => fmt(seconds.value));
 const bestStr = computed(() => bestTime.value ? fmt(bestTime.value) : "—");
 
 // ---- sliding logic ----
-// Click a tile: if blank is in same row or col, slide entire run
+// Click a tile: if blank is in same row or col, slide entire run.
+// The slide itself is the pure, unit-tested slideRun() from app/games/fifteen.ts.
 function tileClick(idx) {
   if (won.value) return;
-  const n = N.value;
-  const tr = (idx / n) | 0;
-  const tc = idx % n;
-  const bi = blankIdx.value;
-  const br = (bi / n) | 0;
-  const bc = bi % n;
-
-  if (tr !== br && tc !== bc) return; // not in same row/col
+  const next = slideRun(tiles.value, N.value, idx);
+  if (!next) return; // not in same row/col as the blank (or the blank itself)
 
   if (!started) { started = true; startTimer(); }
 
-  const next = tiles.value.slice();
-  let cursor = bi;
-  if (tr === br) {
-    // same row — slide horizontally
-    const step = tc > bc ? 1 : -1;
-    while (cursor !== idx) {
-      const from = cursor + step;
-      next[cursor] = next[from];
-      cursor = from;
-    }
-  } else {
-    // same col — slide vertically
-    const step = tr > br ? n : -n;
-    while (cursor !== idx) {
-      const from = cursor + step;
-      next[cursor] = next[from];
-      cursor = from;
-    }
-  }
-  next[idx] = 0;
   tiles.value = next;
   blankIdx.value = idx;
   moves.value++;

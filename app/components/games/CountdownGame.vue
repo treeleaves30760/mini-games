@@ -1,9 +1,9 @@
 <script setup>
 import {
   COUNTDOWN_DIFFICULTIES,
-  applyCountdownOp,
   generateCountdownPuzzle,
-  isCountdownSolved,
+  isCountdownWon,
+  playCountdownMove,
 } from "~/games/countdown";
 
 const accent = "#38bdf8";
@@ -73,19 +73,17 @@ function selectOp(op) {
 }
 
 function combine(ai, bi) {
-  const a = cards.value[ai];
-  const b = cards.value[bi];
-  const result = applyCountdownOp(selectedOp.value, a.value, b.value);
-  if (result === null) {
+  // The merge rules live in the pure module (and are unit-tested there); this
+  // only re-attaches a fresh id to the merged card so the list keeps animating.
+  const next = playCountdownMove(cards.value, ai, bi, selectedOp.value);
+  if (!next) {
     selectedCard.value = null;
     selectedOp.value = null;
     return;
   }
   history.value.push(cards.value.map((card) => ({ ...card })));
-  const next = makeCard(result, `(${a.expr} ${selectedOp.value} ${b.expr})`);
-  const rest = cards.value.filter((_, index) => index !== ai && index !== bi);
-  rest.push(next);
-  cards.value = rest;
+  const merged = next[next.length - 1];
+  cards.value = [...next.slice(0, -1), makeCard(merged.value, merged.expr)];
   selectedCard.value = null;
   selectedOp.value = null;
   checkWin();
@@ -111,7 +109,7 @@ function resetCards() {
 }
 
 function checkWin() {
-  if (cards.value.length !== 1 || !puzzle.value || !isCountdownSolved(cards.value[0].value, puzzle.value.target)) return;
+  if (!puzzle.value || !isCountdownWon(cards.value, puzzle.value.target)) return;
   won.value = true;
   overlay.title = "精準命中！";
   overlay.sub = `${cards.value[0].expr} = ${puzzle.value.target}`;

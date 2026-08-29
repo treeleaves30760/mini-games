@@ -76,14 +76,16 @@ function cageOp(values: number[], rng: Rng, difficulty: KenKenDifficulty): Pick<
     ];
     const hi = Math.max(a, b);
     const lo = Math.min(a, b);
-    if (lo !== 0 && hi % lo === 0) candidates.push({ op: "÷", target: hi / lo });
+    // Cell values are 1..size, so lo >= 1 and the ratio is always well defined.
+    if (hi % lo === 0) candidates.push({ op: "÷", target: hi / lo });
+    // Every difficulty keeps at least "+" and "×", so `weighted` is never empty.
     const weighted =
       difficulty.key === "easy"
         ? candidates.filter((x) => x.op === "+" || x.op === "×")
         : difficulty.key === "normal"
           ? candidates
           : [...candidates, ...candidates.filter((x) => x.op === "-" || x.op === "÷")];
-    return rng.pick(weighted.length ? weighted : candidates);
+    return rng.pick(weighted);
   }
   if (difficulty.key === "expert" && values.every((v) => v > 1) && rng.bool()) {
     return { op: "×", target: values.reduce((a, b) => a * b, 1) };
@@ -120,6 +122,11 @@ export function buildCages(size: number, solution: number[], rng: Rng, difficult
       unassigned.delete(next);
     }
 
+    // Keep cells in row-major order so cells[0] is the cage's top-left cell — the
+    // one that carries the target label in the UI. Sorting happens after all RNG
+    // draws for this cage and every operation is symmetric, so a given seed still
+    // produces exactly the same puzzle.
+    cells.sort((a, b) => a - b);
     if (cells.length > 1) multiCages++;
     const values = cells.map((cell) => solution[cell]);
     const op = cageOp(values, rng, difficulty);
@@ -148,6 +155,27 @@ export function generateKenKenPuzzle(rng: Rng, difficultyKey: string = "normal")
 
 export function cageLabel(cage: KenKenCage): string {
   return cage.op === "=" ? String(cage.target) : `${cage.target}${cage.op}`;
+}
+
+export interface KenKenEdges {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+}
+
+/** Sides of a cell that lie on its cage outline: the grid border or a different cage. */
+export function cageEdges(puzzle: KenKenPuzzle, idx: number): KenKenEdges {
+  const { size, cageOf } = puzzle;
+  const r = Math.floor(idx / size);
+  const c = idx % size;
+  const id = cageOf[idx];
+  return {
+    top: r === 0 || cageOf[idx - size] !== id,
+    right: c + 1 === size || cageOf[idx + 1] !== id,
+    bottom: r + 1 === size || cageOf[idx + size] !== id,
+    left: c === 0 || cageOf[idx - 1] !== id,
+  };
 }
 
 export function cageSatisfied(cage: KenKenCage, cells: (number | null)[]): boolean {

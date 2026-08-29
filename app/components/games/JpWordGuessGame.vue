@@ -22,37 +22,24 @@ const emit = defineEmits(["solved"]);
 import {
   WORDS,
   KANA,
+  KEYBOARD_SEION as SEION,
+  KEYBOARD_DAKUTEN as DAKUTEN,
   scoreGuess,
   isWin,
   pickWord,
   parseRomaji,
+  flushRomaji,
+  mergeKeyStates,
+  guessNumber,
   WORD_LENGTH,
   MAX_GUESSES,
 } from "~/games/jpwordguess";
 
 const WORD_BY_KANA = Object.fromEntries(WORDS.map((w) => [w.kana, w]));
 
-// ---- on-screen 五十音 keyboard layout (null = grid gap) ----
-const SEION = [
-  ["あ", "い", "う", "え", "お"],
-  ["か", "き", "く", "け", "こ"],
-  ["さ", "し", "す", "せ", "そ"],
-  ["た", "ち", "つ", "て", "と"],
-  ["な", "に", "ぬ", "ね", "の"],
-  ["は", "ひ", "ふ", "へ", "ほ"],
-  ["ま", "み", "む", "め", "も"],
-  ["や", null, "ゆ", null, "よ"],
-  ["ら", "り", "る", "れ", "ろ"],
-  ["わ", null, null, null, "を"],
-  ["ん", null, null, null, null],
-];
-const DAKUTEN = [
-  ["が", "ぎ", "ぐ", "げ", "ご"],
-  ["ざ", "じ", "ず", "ぜ", "ぞ"],
-  ["だ", "ぢ", "づ", "で", "ど"],
-  ["ば", "び", "ぶ", "べ", "ぼ"],
-  ["ぱ", "ぴ", "ぷ", "ぺ", "ぽ"],
-];
+// The on-screen 五十音 keyboard layout (SEION / DAKUTEN, null = grid gap) is
+// imported above so that the legal-guess set and the keys the player can press
+// are provably the same thing (see the tests).
 
 // ---- state ----
 const wordObj = ref(null); // the JpWord answer
@@ -75,7 +62,11 @@ let toastTimer = null;
 
 // ---- seed / daily ----
 let rng;
+let revealing = false; // true while a submitted row's tiles are flipping
+let generation = 0; // bumped per puzzle so a stale reveal can't touch a new game
 function regenerate() {
+  generation++;
+  revealing = false;
   rng = makeRng(props.seed);
   wordObj.value = pickWord(rng);
   boardRows.value = Array.from({ length: MAX_GUESSES }, () => ({ letters: [] }));
@@ -107,22 +98,23 @@ function triggerShake(row) {
   }, 600);
 }
 
+/* Input is accepted only while a game is in progress and no row is mid-reveal. */
+function canType() {
+  return gameState.value === "playing" && !revealing;
+}
+
 /* Commit any half-typed romaji into the row before reading the guess: completed
    kana are pushed, and a lone trailing "n" becomes ん. */
 function flushPending() {
   if (!pendingRomaji.value) return;
-  const { kana, rest } = parseRomaji(pendingRomaji.value);
-  for (const k of kana) {
+  for (const k of flushRomaji(pendingRomaji.value)) {
     if (currentInput.value.length < WORD_LENGTH) currentInput.value.push(k);
-  }
-  if (rest === "n" && currentInput.value.length < WORD_LENGTH) {
-    currentInput.value.push("ん");
   }
   pendingRomaji.value = "";
 }
 
 async function submitGuess() {
-  if (gameState.value !== "playing") return;
+  if (!canType()) return;
   flushPending();
   if (currentInput.value.length < WORD_LENGTH) {
     showToast(`再填滿 ${WORD_LENGTH} 個假名`);
@@ -135,17 +127,18 @@ async function submitGuess() {
   const row = currentRow.value;
   boardRows.value[row].letters = [...guess].map((ch, i) => ({ ch, state: states[i] }));
   revealRow.value = row;
+  keyStates.value = mergeKeyStates(keyStates.value, guess, states);
 
-  // Update key colours (correct > present > absent)
-  const priority = { correct: 3, present: 2, absent: 1 };
-  const chars = [...guess];
-  for (let i = 0; i < WORD_LENGTH; i++) {
-    const k = chars[i];
-    const cur = keyStates.value[k];
-    if (!cur || priority[states[i]] > priority[cur]) keyStates.value[k] = states[i];
-  }
-
+  // Freeze input while the tiles flip. Without this a second Enter / tap on 送出
+  // during the animation scored the same row again and advanced two rows,
+  // burning a guess (or ending the game outright from the fifth row). If a new
+  // puzzle is started meanwhile, the stale continuation is dropped rather than
+  // applied to the new answer.
+  revealing = true;
+  const gen = generation;
   await new Promise((r) => setTimeout(r, 320 * WORD_LENGTH + 120));
+  if (gen !== generation) return;
+  revealing = false;
 
   if (isWin(states)) {
     gameState.value = "won";
@@ -177,13 +170,13 @@ async function submitGuess() {
 
 // ---- input ----
 function inputKana(ch) {
-  if (gameState.value !== "playing") return;
+  if (!canType()) return;
   pendingRomaji.value = "";
   if (currentInput.value.length < WORD_LENGTH) currentInput.value.push(ch);
 }
 
 function deleteLast() {
-  if (gameState.value !== "playing") return;
+  if (!canType()) return;
   if (pendingRomaji.value) {
     pendingRomaji.value = pendingRomaji.value.slice(0, -1);
     return;
@@ -210,7 +203,7 @@ function onKey(e) {
     return;
   }
   // Romaji from a Latin keyboard → buffer & convert on the fly.
-  if (/^[a-zA-Z]$/.test(e.key) && gameState.value === "playing") {
+  if (/^[a-zA-Z]$/.test(e.key) && canType()) {
     e.preventDefault();
     if (currentInput.value.length >= WORD_LENGTH) return;
     pendingRomaji.value += e.key.toLowerCase();
@@ -248,9 +241,9 @@ const learnedWords = computed(() =>
   learned.value.map((k) => WORD_BY_KANA[k]).filter(Boolean)
 );
 
-// Guesses used, clamped: after a loss currentRow advances past the last row, so
-// the raw `currentRow + 1` would read "7 / 6" — cap it at MAX_GUESSES.
-const guessNo = computed(() => Math.min(currentRow.value + 1, MAX_GUESSES));
+// Guesses used, clamped to 1..MAX_GUESSES (after a loss currentRow advances past
+// the last row, so the raw `currentRow + 1` would read "7 / 6").
+const guessNo = computed(() => guessNumber(currentRow.value));
 
 function toggleMeaning() {
   showMeaning.value = !showMeaning.value;

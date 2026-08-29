@@ -19,7 +19,6 @@ const props = defineProps({
 });
 const emit = defineEmits(['solved']);
 
-const TARGET_POOL = [24, 36, 48, 60];
 const targetMode = ref('mix');          // 'mix' | '24' | '36' | '48' | '60'
 const target = ref(24);                 // the current puzzle's goal number
 const targetRat = computed(() => rat(target.value));

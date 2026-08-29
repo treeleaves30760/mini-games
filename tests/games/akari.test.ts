@@ -10,9 +10,10 @@ import {
   checkWin,
   buildBoard,
   buildBoardFromSeed,
+  greedySolution,
   type AkariCell,
 } from "~/games/akari";
-import { makeRng } from "~/utils/rng";
+import { makeRng, todaySeed } from "~/utils/rng";
 
 // ---- helpers -----------------------------------------------------------------
 
@@ -647,5 +648,525 @@ describe("buildBoardFromSeed", () => {
     const board = buildBoardFromSeed(null, 7);
     expect(board).toHaveLength(49);
     expect(board.every((c) => !c.bulb)).toBe(true);
+  });
+});
+
+// =============================================================================
+// Solvability audit
+//
+// Everything in this section is written from the rules as shown to the player
+// (see the 規則 panel in AkariGame.vue) and deliberately does NOT reuse the
+// module's helpers, so it is an independent check of both the generator and
+// the win detection:
+//   - every white cell must be lit;
+//   - a bulb lights its row and column until a wall;
+//   - no bulb may be lit by another bulb;
+//   - a numbered wall has exactly that many orthogonally adjacent bulbs;
+//   - unnumbered walls are unconstrained.
+// =============================================================================
+
+const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const;
+
+/** Sizes offered by the component: DIFFS in AkariGame.vue (7/9/11); the Daily
+    Challenge always uses 9. */
+const UI_SIZES = [7, 9, 11] as const;
+const DAILY_SIZE = 9;
+
+/** Cells a bulb at `i` would light (excluding `i`), stopping at walls. */
+function visibleCells(board: readonly AkariCell[], size: number, i: number): number[] {
+  const out: number[] = [];
+  const r0 = Math.floor(i / size);
+  const c0 = i % size;
+  for (const [dr, dc] of DIRS) {
+    let r = r0 + dr;
+    let c = c0 + dc;
+    while (r >= 0 && r < size && c >= 0 && c < size) {
+      const j = r * size + c;
+      if (board[j].wall) break;
+      out.push(j);
+      r += dr;
+      c += dc;
+    }
+  }
+  return out;
+}
+
+/** Orthogonal non-wall neighbours of cell `i`. */
+function whiteNeighbours(board: readonly AkariCell[], size: number, i: number): number[] {
+  const out: number[] = [];
+  const r0 = Math.floor(i / size);
+  const c0 = i % size;
+  for (const [dr, dc] of DIRS) {
+    const r = r0 + dr;
+    const c = c0 + dc;
+    if (r >= 0 && r < size && c >= 0 && c < size) {
+      const j = r * size + c;
+      if (!board[j].wall) out.push(j);
+    }
+  }
+  return out;
+}
+
+/** Independent rule check: is `bulbs` a complete, valid solution of `board`? */
+function isValidSolution(board: readonly AkariCell[], size: number, bulbs: ReadonlySet<number>): boolean {
+  const total = size * size;
+  const lit = new Uint8Array(total);
+  for (const b of bulbs) {
+    if (board[b].wall) return false;
+    lit[b] = 1;
+    for (const j of visibleCells(board, size, b)) {
+      if (bulbs.has(j)) return false; // two bulbs see each other
+      lit[j] = 1;
+    }
+  }
+  for (let i = 0; i < total; i++) if (!board[i].wall && !lit[i]) return false;
+  for (let i = 0; i < total; i++) {
+    const cell = board[i];
+    if (!cell.wall || cell.num === null) continue;
+    const adjacent = whiteNeighbours(board, size, i).filter((j) => bulbs.has(j)).length;
+    if (adjacent !== cell.num) return false;
+  }
+  return true;
+}
+
+/**
+ * Independent backtracking solver. Picks the unlit white cell with the fewest
+ * ways to light it (itself or an unlit cell that sees it), branches over those
+ * candidates, and prunes with the numbered-wall bounds. Returns ascending bulb
+ * indices of one solution, or null when the puzzle has none.
+ */
+function solveAkari(board: readonly AkariCell[], size: number): number[] | null {
+  const total = size * size;
+  const whites: number[] = [];
+  for (let i = 0; i < total; i++) if (!board[i].wall) whites.push(i);
+  const rays: number[][] = new Array(total);
+  for (const w of whites) rays[w] = visibleCells(board, size, w);
+  const clues: { num: number; nb: number[] }[] = [];
+  for (let i = 0; i < total; i++) {
+    const cell = board[i];
+    if (cell.wall && cell.num !== null) clues.push({ num: cell.num, nb: whiteNeighbours(board, size, i) });
+  }
+
+  const lit = new Int32Array(total); // how many bulbs light each cell
+  const bulb = new Uint8Array(total);
+  const banned = new Uint8Array(total); // candidates already tried on this path
+  let result: number[] | null = null;
+
+  // Every numbered wall must still be satisfiable: bulbs so far <= num and
+  // bulbs so far + neighbours that could still take a bulb >= num. A bulb can
+  // only ever go on a currently unlit, unbanned cell, and the four neighbours
+  // of a wall never see each other, so this bound is exact.
+  const cluesFeasible = (): boolean => {
+    for (const { num, nb } of clues) {
+      let have = 0;
+      let possible = 0;
+      for (const j of nb) {
+        if (bulb[j]) have++;
+        else if (!lit[j] && !banned[j]) possible++;
+      }
+      if (have > num || have + possible < num) return false;
+    }
+    return true;
+  };
+  const toggle = (i: number, d: 1 | -1) => {
+    bulb[i] = d === 1 ? 1 : 0;
+    lit[i] += d;
+    for (const j of rays[i]) lit[j] += d;
+  };
+  const search = (): boolean => {
+    let best: number[] | null = null;
+    for (const w of whites) {
+      if (lit[w] > 0) continue;
+      const cands: number[] = [];
+      if (!banned[w]) cands.push(w);
+      for (const j of rays[w]) if (!lit[j] && !banned[j]) cands.push(j);
+      if (cands.length === 0) return false; // this cell can never be lit
+      if (best === null || cands.length < best.length) {
+        best = cands;
+        if (cands.length === 1) break;
+      }
+    }
+    if (best === null) {
+      // Everything is lit — the bulb set is final, clues must match exactly.
+      if (!clues.every(({ num, nb }) => nb.filter((j) => bulb[j]).length === num)) return false;
+      result = [];
+      for (let i = 0; i < total; i++) if (bulb[i]) result.push(i);
+      return true;
+    }
+    // Partition solutions by the first candidate that carries a bulb: in
+    // branch k candidate k has a bulb and candidates 0..k-1 are banned.
+    const bannedHere: number[] = [];
+    let found = false;
+    for (const c of best) {
+      toggle(c, 1);
+      if (cluesFeasible() && search()) found = true;
+      toggle(c, -1);
+      if (found) break;
+      banned[c] = 1;
+      bannedHere.push(c);
+    }
+    for (const c of bannedHere) banned[c] = 0;
+    return found;
+  };
+
+  if (!cluesFeasible()) return null;
+  search();
+  return result;
+}
+
+/** Copy of `board` with exactly the given bulbs placed. */
+function withBulbs(board: readonly AkariCell[], bulbs: Iterable<number>): AkariCell[] {
+  const copy = board.map((c) => ({ ...c, bulb: false }));
+  for (const i of bulbs) copy[i].bulb = true;
+  return copy;
+}
+
+/** Does the module's win check accept this bulb placement on this board? */
+function winsWith(board: readonly AkariCell[], size: number, bulbs: Iterable<number>): boolean {
+  const b = withBulbs(board, bulbs);
+  return checkWin(b, size, computeLighting(b, size));
+}
+
+/**
+ * Replay the generator's raw wall pass for a seed: one `rng.bool(0.17)` per
+ * cell in index order (Step 1 of buildBoard). Lets the guard tests prove what
+ * the un-guarded layout looked like for a given seed.
+ */
+function rawWallLayout(seed: string | number, size: number): boolean[] {
+  const rng = makeRng(seed);
+  return Array.from({ length: size * size }, () => rng.bool(0.17));
+}
+
+/**
+ * Replay Step 1 + Step 3's clue rolls (one `rng.bool(0.75)` per wall, in
+ * index order) for a seed whose wall layout triggers neither wall guard
+ * (asserted here), returning which walls would have revealed a number.
+ */
+function rawClueRolls(seed: string | number, size: number): boolean[] {
+  const rng = makeRng(seed);
+  const total = size * size;
+  const walls = Array.from({ length: total }, () => rng.bool(0.17));
+  const wallCount = walls.filter(Boolean).length;
+  expect(wallCount).toBeGreaterThan(0);
+  expect(wallCount).toBeLessThan(total);
+  return walls.filter(Boolean).map(() => rng.bool(0.75));
+}
+
+function countCells(board: readonly AkariCell[]) {
+  return {
+    white: board.filter((c) => !c.wall).length,
+    walls: board.filter((c) => c.wall).length,
+    numbered: board.filter((c) => c.wall && c.num !== null).length,
+  };
+}
+
+// ---- solver self-checks -----------------------------------------------------
+
+describe("audit solver — self-checks on hand-made boards", () => {
+  it("solves a 2×2 open grid with a diagonal placement", () => {
+    const S = 2;
+    const sol = solveAkari(blankBoard(S), S);
+    expect(sol).not.toBeNull();
+    expect(isValidSolution(blankBoard(S), S, new Set(sol!))).toBe(true);
+  });
+
+  it("returns null for an unsatisfiable clue (num=4 on a corner wall)", () => {
+    const S = 3;
+    const board = blankBoard(S);
+    setCell(board, S, 0, 0, { wall: true, num: 4 });
+    expect(solveAkari(board, S)).toBeNull();
+  });
+
+  it("returns null when two 0-walls forbid every way to light a cell", () => {
+    // Row 0: [0] . [0]  — (0,1) can only be lit by itself (column is walled
+    // below), but both neighbours are 0-walls, so no bulb may go there.
+    const S = 3;
+    const board = blankBoard(S);
+    setCell(board, S, 0, 0, { wall: true, num: 0 });
+    setCell(board, S, 0, 2, { wall: true, num: 0 });
+    setCell(board, S, 1, 1, { wall: true, num: null });
+    expect(solveAkari(board, S)).toBeNull();
+  });
+
+  it("respects clues: a num=1 wall gets exactly one adjacent bulb", () => {
+    //  . . .
+    //  . 1 W   — solvable, e.g. bulbs at (1,0), (0,2), (2,2)
+    //  . . .
+    const S = 3;
+    const board = blankBoard(S);
+    setCell(board, S, 1, 1, { wall: true, num: 1 });
+    setCell(board, S, 1, 2, { wall: true });
+    const sol = solveAkari(board, S);
+    expect(sol).not.toBeNull();
+    expect(isValidSolution(board, S, new Set(sol!))).toBe(true);
+    const adjacent = whiteNeighbours(board, S, cellIdx(1, 1, S)).filter((j) => sol!.includes(j));
+    expect(adjacent).toHaveLength(1);
+  });
+
+  it("isValidSolution rejects bulbs on walls, unlit cells, conflicts and bad clues", () => {
+    const S = 3;
+    const board = blankBoard(S);
+    setCell(board, S, 1, 1, { wall: true, num: 0 });
+    // valid: diagonal corners
+    expect(isValidSolution(board, S, new Set([0, 8]))).toBe(true);
+    // bulb on the wall
+    expect(isValidSolution(board, S, new Set([4, 0, 8]))).toBe(false);
+    // unlit cell
+    expect(isValidSolution(board, S, new Set([0]))).toBe(false);
+    // conflict on row 0
+    expect(isValidSolution(board, S, new Set([0, 2, 6]))).toBe(false);
+    // clue violated (bulb next to the 0-wall)
+    expect(isValidSolution(board, S, new Set([1, 6, 5]))).toBe(false);
+  });
+});
+
+// ---- greedySolution ---------------------------------------------------------
+
+describe("greedySolution — the generator's embedded solution", () => {
+  it("is a valid solution for ANY wall layout, with or without clues", () => {
+    const rng = makeRng("greedy-any-layout");
+    for (let trial = 0; trial < 300; trial++) {
+      const S = rng.int(2, 8);
+      const density = rng.float(0, 0.6);
+      const board = blankBoard(S);
+      for (const cell of board) cell.wall = rng.bool(density);
+      const sol = greedySolution(board, S);
+      expect(sol).toEqual([...sol].sort((a, b) => a - b));
+      expect(isValidSolution(board, S, new Set(sol))).toBe(true);
+      expect(winsWith(board, S, sol)).toBe(true);
+    }
+  });
+
+  it("ignores and preserves existing bulb flags on the input board", () => {
+    const S = 3;
+    const board = blankBoard(S);
+    setCell(board, S, 2, 2, { bulb: true });
+    const sol = greedySolution(board, S);
+    expect(sol).toEqual([0, 4, 8]);
+    expect(board[cellIdx(2, 2, S)].bulb).toBe(true);
+    expect(board.filter((c) => c.bulb)).toHaveLength(1);
+  });
+
+  it("returns no bulbs for an all-wall board", () => {
+    const S = 2;
+    const board = blankBoard(S);
+    for (const cell of board) cell.wall = true;
+    expect(greedySolution(board, S)).toEqual([]);
+  });
+});
+
+// ---- checkWin accepts any valid solution -----------------------------------
+
+describe("checkWin — accepts any valid solution, not just the embedded one", () => {
+  it("2×2 open grid: both diagonal placements win", () => {
+    const S = 2;
+    const board = blankBoard(S);
+    expect(greedySolution(board, S)).toEqual([0, 3]);
+    expect(winsWith(board, S, [0, 3])).toBe(true);
+    expect(winsWith(board, S, [1, 2])).toBe(true); // the other diagonal
+    expect(winsWith(board, S, [0, 1])).toBe(false); // conflict on row 0
+    expect(winsWith(board, S, [0])).toBe(false); // (1,1) unlit
+  });
+
+  it("a generated puzzle: an alternative solution that differs from the embedded one wins", () => {
+    // Search a handful of seeds for one where the independent solver's answer
+    // is not the greedy placement, then confirm the game accepts both.
+    let checked = 0;
+    for (let s = 0; s < 20; s++) {
+      const S = 7;
+      const board = buildBoard(makeRng(`alt-${s}`), S);
+      const greedy = greedySolution(board, S);
+      const alt = solveAkari(board, S);
+      expect(alt).not.toBeNull();
+      if (alt!.join() === greedy.join()) continue;
+      expect(isValidSolution(board, S, new Set(alt!))).toBe(true);
+      expect(winsWith(board, S, alt!)).toBe(true);
+      expect(winsWith(board, S, greedy)).toBe(true);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});
+
+// ---- buildBoard structural guards ------------------------------------------
+
+describe("buildBoard — structural guards (never empty, never bare, never clue-less)", () => {
+  it("rejects sizes that cannot hold both a white cell and a wall", () => {
+    expect(() => buildBoard(makeRng(1), 1)).toThrow(RangeError);
+    expect(() => buildBoard(makeRng(1), 0)).toThrow(RangeError);
+    expect(() => buildBoard(makeRng(1), 2.5)).toThrow(RangeError);
+    expect(() => buildBoard(makeRng(1), 2)).not.toThrow();
+  });
+
+  it("all-wall raw layout: the centre cell is opened (seed g-180, size 2)", () => {
+    const S = 2;
+    const seed = "g-180";
+    expect(rawWallLayout(seed, S).every(Boolean)).toBe(true);
+    const board = buildBoard(makeRng(seed), S);
+    const centre = Math.floor((S * S) / 2);
+    expect(board[centre].wall).toBe(false);
+    expect(countCells(board)).toEqual({ white: 1, walls: 3, numbered: expect.any(Number) });
+    expect(countCells(board).numbered).toBeGreaterThan(0);
+    expect(solveAkari(board, S)).toEqual([centre]);
+    expect(winsWith(board, S, [centre])).toBe(true);
+    expect(winsWith(board, S, [])).toBe(false); // not solved before the first click
+  });
+
+  it("no-wall raw layout: a wall is forced at the centre (seed nw-5571, size 7)", () => {
+    const S = 7;
+    const seed = "nw-5571";
+    expect(rawWallLayout(seed, S).some(Boolean)).toBe(false);
+    const board = buildBoard(makeRng(seed), S);
+    const centre = Math.floor((S * S) / 2);
+    expect(cellRc(centre, S)).toEqual([3, 3]);
+    expect(board[centre].wall).toBe(true);
+    expect(countCells(board)).toEqual({ white: 48, walls: 1, numbered: 1 });
+    const sol = solveAkari(board, S);
+    expect(sol).not.toBeNull();
+    expect(winsWith(board, S, sol!)).toBe(true);
+    expect(winsWith(board, S, greedySolution(board, S))).toBe(true);
+  });
+
+  it("no-wall raw layout at the smallest size (seed g-2, size 2)", () => {
+    const S = 2;
+    const seed = "g-2";
+    expect(rawWallLayout(seed, S).some(Boolean)).toBe(false);
+    const board = buildBoard(makeRng(seed), S);
+    expect(countCells(board)).toEqual({ white: 3, walls: 1, numbered: 1 });
+    expect(board[2].wall).toBe(true);
+    const sol = solveAkari(board, S);
+    expect(sol).not.toBeNull();
+    expect(winsWith(board, S, sol!)).toBe(true);
+  });
+
+  it("walls whose clue rolls all fail: exactly one clue is revealed (size 7 seeds)", () => {
+    // Before the guard these Easy-size seeds produced a puzzle with walls but
+    // no number at all (~1 in 1,250 boards at 7×7).
+    const S = 7;
+    for (const seed of ["audit-172", "f-5813"]) {
+      const rolls = rawClueRolls(seed, S);
+      expect(rolls.some(Boolean)).toBe(false);
+      const board = buildBoard(makeRng(seed), S);
+      const stats = countCells(board);
+      expect(stats.walls).toBe(rolls.length);
+      expect(stats.numbered).toBe(1);
+      // the revealed number is consistent with the embedded solution
+      const bulbs = new Set(greedySolution(board, S));
+      const i = board.findIndex((c) => c.num !== null);
+      expect(board[i].wall).toBe(true);
+      expect(board[i].num).toBe(whiteNeighbours(board, S, i).filter((j) => bulbs.has(j)).length);
+      const sol = solveAkari(board, S);
+      expect(sol).not.toBeNull();
+      expect(winsWith(board, S, sol!)).toBe(true);
+    }
+  });
+
+  it("walls whose clue rolls all fail at the smallest size (seed g-14, size 2)", () => {
+    const S = 2;
+    const rolls = rawClueRolls("g-14", S);
+    expect(rolls).toEqual([false]);
+    const board = buildBoard(makeRng("g-14"), S);
+    expect(countCells(board)).toEqual({ white: 3, walls: 1, numbered: 1 });
+  });
+
+  it("does not alter boards whose raw layout needs no guard", () => {
+    // Replay the un-guarded generator (walls, greedy clues at 75%) and compare.
+    for (const S of UI_SIZES) {
+      for (let s = 0; s < 40; s++) {
+        const seed = `unchanged-${s}`;
+        const walls = rawWallLayout(seed, S);
+        const rolls = rawClueRolls(seed, S);
+        if (!rolls.some(Boolean)) continue; // guard case, covered above
+        const board = buildBoard(makeRng(seed), S);
+        expect(board.map((c) => c.wall)).toEqual(walls);
+        const bulbs = new Set(greedySolution(board, S));
+        let k = 0;
+        for (let i = 0; i < S * S; i++) {
+          if (!walls[i]) {
+            expect(board[i].num).toBeNull();
+            continue;
+          }
+          const expected = rolls[k++]
+            ? whiteNeighbours(board, S, i).filter((j) => bulbs.has(j)).length
+            : null;
+          expect(board[i].num).toBe(expected);
+        }
+      }
+    }
+  });
+});
+
+// ---- the audit itself --------------------------------------------------------
+
+describe("solvability audit — every UI size, hundreds of seeds, every Daily date", () => {
+  /** Full per-puzzle audit; returns whether the solver's answer differs from the embedded one. */
+  function auditPuzzle(board: AkariCell[], size: number, label: string): boolean {
+    const total = size * size;
+    expect(board, label).toHaveLength(total);
+    expect(board.every((c) => !c.bulb), label).toBe(true);
+
+    // (c) never degenerate: something to light, some structure, some clue, not pre-solved
+    const stats = countCells(board);
+    expect(stats.white, label).toBeGreaterThan(0);
+    expect(stats.walls, label).toBeGreaterThan(0);
+    expect(stats.numbered, label).toBeGreaterThan(0);
+    expect(winsWith(board, size, []), label).toBe(false);
+    for (const cell of board) {
+      if (cell.num !== null) {
+        expect(cell.wall, label).toBe(true);
+        expect(cell.num, label).toBeGreaterThanOrEqual(0);
+        expect(cell.num, label).toBeLessThanOrEqual(4);
+      }
+    }
+
+    // (a) independently solvable
+    const sol = solveAkari(board, size);
+    expect(sol, `${label}: no solution found`).not.toBeNull();
+    expect(isValidSolution(board, size, new Set(sol!)), label).toBe(true);
+
+    // (b) win check accepts the independent solution AND the embedded one …
+    const embedded = greedySolution(board, size);
+    expect(isValidSolution(board, size, new Set(embedded)), label).toBe(true);
+    expect(winsWith(board, size, sol!), label).toBe(true);
+    expect(winsWith(board, size, embedded), label).toBe(true);
+
+    // … and rejects wrong / incomplete states
+    expect(winsWith(board, size, sol!.slice(1)), label).toBe(false); // one bulb missing
+    const extra = board.findIndex((c, i) => !c.wall && !sol!.includes(i));
+    if (extra !== -1) {
+      // an extra bulb on a lit white cell is always a conflict
+      expect(winsWith(board, size, [...sol!, extra]), label).toBe(false);
+    }
+
+    return sol!.join() !== embedded.join();
+  }
+
+  it("string and numeric seeds × sizes 7/9/11", () => {
+    const seeds: (string | number)[] = [];
+    for (let s = 0; s < 250; s++) seeds.push(`audit-${s}`);
+    for (let s = 1; s <= 50; s++) seeds.push(s);
+    for (const size of UI_SIZES) {
+      let differs = 0;
+      for (const seed of seeds) {
+        const board = buildBoard(makeRng(seed), size);
+        // deterministic: rebuilding from the same seed gives the same puzzle
+        expect(buildBoardFromSeed(seed, size)).toEqual(board);
+        if (auditPuzzle(board, size, `seed=${seed} size=${size}`)) differs++;
+      }
+      // Many puzzles admit a solution other than the embedded one — the win
+      // check must (and does) accept those too.
+      expect(differs).toBeGreaterThan(0);
+    }
+  });
+
+  it("Daily Challenge date seeds (YYYY-MM-DD, size 9) for 2024-01-01 … 2026-12-31", () => {
+    const start = new Date(2024, 0, 1);
+    for (let k = 0; ; k++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + k);
+      if (d.getFullYear() > 2026) break;
+      const seed = todaySeed(d);
+      expect(seed).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      auditPuzzle(buildBoard(makeRng(seed), DAILY_SIZE), DAILY_SIZE, `daily ${seed}`);
+    }
   });
 });

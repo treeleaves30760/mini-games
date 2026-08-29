@@ -488,3 +488,254 @@ describe("end-to-end: walk BFS path using canMove and isAtExit", () => {
     expect(blockedCount).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Solvability audit — independent BFS replayed through the game's move logic
+// ---------------------------------------------------------------------------
+// Maze2dGame.vue offers sizes 11 / 15 / 21 in free play and a fixed 15 for the
+// Daily Challenge, which seeds makeRng with a "YYYY-MM-DD" string. The checks
+// below rebuild the maze graph straight from the raw bitmasks with their own
+// BFS (deliberately NOT isSolvable / shortestPath / reachableCount) and then
+// replay the path through canMove + isAtExit exactly the way the component's
+// move() does, over hundreds of seeds per size. There is no move limit, par or
+// timer target in the UI (steps and time only count up), so nothing else has
+// to be achievable beyond reaching the exit.
+
+const UI_SIZES = [11, 15, 21];
+const DAILY_SIZE = 15;
+
+/** Raw bit values from the documented wall model — intentionally literal so the
+ *  audit does not depend on the module's own DIR_* / DR / DC / OPPOSITE tables. */
+const RAW_DIRS: { bit: number; dr: number; dc: number; back: number }[] = [
+  { bit: 1, dr: -1, dc: 0, back: 4 }, // N, mirrored by S on the neighbour
+  { bit: 2, dr: 0, dc: 1, back: 8 }, // E, mirrored by W
+  { bit: 4, dr: 1, dc: 0, back: 1 }, // S, mirrored by N
+  { bit: 8, dr: 0, dc: -1, back: 2 }, // W, mirrored by E
+];
+
+interface MazeAudit {
+  /** BFS shortest path start → exit (inclusive), or null when unreachable. */
+  path: [number, number][] | null;
+  /** Cells reachable from the start. */
+  reached: number;
+  /** Open passage bits counted from both sides (2 per carved wall). */
+  passages: number;
+  /** Passage bits that lead off the board or are not mirrored on the neighbour. */
+  wallFaults: string[];
+  /** Cases where canMove disagrees with the raw bitmask + bounds. */
+  moveFaults: string[];
+}
+
+function auditMaze(walls: MazeWalls, size: number): MazeAudit {
+  const wallFaults: string[] = [];
+  const moveFaults: string[] = [];
+  let passages = 0;
+
+  // 1. Wall model: every set bit must point inside the grid and be mirrored on
+  //    the neighbour; canMove must agree with the raw bits + bounds everywhere.
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      for (const { bit, dr, dc, back } of RAW_DIRS) {
+        const nr = r + dr;
+        const nc = c + dc;
+        const inBounds = nr >= 0 && nc >= 0 && nr < size && nc < size;
+        const open = (walls[r][c] & bit) !== 0;
+        if (open) {
+          passages++;
+          if (!inBounds) wallFaults.push(`(${r},${c}) bit ${bit} leads off the board`);
+          else if (!(walls[nr][nc] & back)) wallFaults.push(`(${r},${c})->(${nr},${nc}) not mirrored`);
+        }
+        const allowed = canMove(walls, size, size, r, c, dr, dc);
+        if (allowed !== (open && inBounds)) {
+          moveFaults.push(`canMove(${r},${c},${dr},${dc}) = ${allowed}, walls say ${open && inBounds}`);
+        }
+      }
+    }
+  }
+
+  // 2. Independent BFS over the raw bitmasks (cells indexed r * size + c).
+  const prev = new Int32Array(size * size).fill(-2); // -2 = unseen, -1 = root
+  prev[0] = -1;
+  const queue = [0];
+  let reached = 1;
+  for (let head = 0; head < queue.length; head++) {
+    const cur = queue[head];
+    const r = Math.floor(cur / size);
+    const c = cur % size;
+    for (const { bit, dr, dc } of RAW_DIRS) {
+      if (!(walls[r][c] & bit)) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr < 0 || nc < 0 || nr >= size || nc >= size) continue;
+      const id = nr * size + nc;
+      if (prev[id] !== -2) continue;
+      prev[id] = cur;
+      reached++;
+      queue.push(id);
+    }
+  }
+  const exitId = (size - 1) * size + (size - 1);
+  let path: [number, number][] | null = null;
+  if (prev[exitId] !== -2) {
+    path = [];
+    for (let id = exitId; id !== -1; id = prev[id]) path.push([Math.floor(id / size), id % size]);
+    path.reverse();
+  }
+  return { path, reached, passages, wallFaults, moveFaults };
+}
+
+/** Mirror of Maze2dGame.vue move(): a step is applied only when canMove allows
+ *  it, input is ignored once won, and the win fires when isAtExit is true. */
+function replayThroughGame(walls: MazeWalls, size: number, path: [number, number][]) {
+  let py = 0;
+  let px = 0;
+  let steps = 0;
+  let won = false;
+  let blocked: string | null = null;
+  for (let i = 1; i < path.length; i++) {
+    if (won) break;
+    const [nr, nc] = path[i];
+    const dr = nr - py;
+    const dc = nc - px;
+    if (!canMove(walls, size, size, py, px, dr, dc)) {
+      blocked = `(${py},${px})->(${nr},${nc})`;
+      break;
+    }
+    py += dr;
+    px += dc;
+    steps++;
+    if (isAtExit(py, px, size, size)) won = true;
+  }
+  return { steps, won, blocked, at: [py, px] as [number, number] };
+}
+
+/** Run the full audit for one size over many seeds; returns human-readable failures. */
+function auditSeeds(size: number, seeds: (string | number)[]): string[] {
+  const failures: string[] = [];
+  const cells = size * size;
+  for (const seed of seeds) {
+    const tag = `size=${size} seed=${JSON.stringify(seed)}`;
+    const walls = make(size, seed);
+    const a = auditMaze(walls, size);
+    if (a.wallFaults.length) failures.push(`${tag}: ${a.wallFaults.slice(0, 3).join("; ")}`);
+    if (a.moveFaults.length) failures.push(`${tag}: ${a.moveFaults.slice(0, 3).join("; ")}`);
+    if (a.reached !== cells) failures.push(`${tag}: only ${a.reached}/${cells} cells reachable`);
+    // Connected + exactly cells-1 carved walls = spanning tree, i.e. a perfect
+    // maze with a unique route, which is what the UI hint promises.
+    if (a.passages !== 2 * (cells - 1)) {
+      failures.push(`${tag}: ${a.passages / 2} carved walls, a perfect maze has ${cells - 1}`);
+    }
+    if (!a.path) {
+      failures.push(`${tag}: no path from start to exit`);
+      continue;
+    }
+    const replay = replayThroughGame(walls, size, a.path);
+    if (replay.blocked) failures.push(`${tag}: canMove blocked BFS step ${replay.blocked}`);
+    if (!replay.won || replay.steps !== a.path.length - 1) {
+      failures.push(`${tag}: replay ended at (${replay.at}) after ${replay.steps} steps, won=${replay.won}`);
+    }
+  }
+  return failures;
+}
+
+function datesOfYear(year: number): string[] {
+  const out: string[] = [];
+  for (let d = new Date(year, 0, 1); d.getFullYear() === year; d.setDate(d.getDate() + 1)) {
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    out.push(`${year}-${m}-${day}`);
+  }
+  return out;
+}
+
+const NUMERIC_SEEDS = Array.from({ length: 300 }, (_, i) => i); // 0..299 (0 hits makeRng's `|| 1` path)
+const STRING_SEEDS = Array.from({ length: 100 }, (_, i) => `maze-${i}`);
+const DAILY_SEEDS = [...datesOfYear(2026), ...datesOfYear(2027)];
+
+describe("solvability audit — every UI size × hundreds of seeds", () => {
+  for (const size of UI_SIZES) {
+    it(`start and exit are distinct cells at size ${size}`, () => {
+      expect(isAtExit(0, 0, size, size)).toBe(false);
+      expect(isAtExit(size - 1, size - 1, size, size)).toBe(true);
+    });
+
+    it(`size ${size}: perfect, fully connected, BFS path replays to a win (${NUMERIC_SEEDS.length + STRING_SEEDS.length} seeds)`, () => {
+      expect(auditSeeds(size, [...NUMERIC_SEEDS, ...STRING_SEEDS])).toEqual([]);
+    });
+  }
+
+  it(`daily challenge: size ${DAILY_SIZE} for every date of 2026 and 2027 (${DAILY_SEEDS.length} seeds)`, () => {
+    expect(DAILY_SEEDS).toHaveLength(365 * 2);
+    expect(auditSeeds(DAILY_SIZE, DAILY_SEEDS)).toEqual([]);
+  });
+
+  it("daily seed is deterministic and differs from the neighbouring day", () => {
+    const a = make(DAILY_SIZE, "2026-08-29");
+    const b = make(DAILY_SIZE, "2026-08-29");
+    const c = make(DAILY_SIZE, "2026-08-30");
+    const flat = (w: MazeWalls) => w.map((row) => Array.from(row).join(",")).join("|");
+    expect(flat(a)).toBe(flat(b));
+    expect(flat(a)).not.toBe(flat(c));
+  });
+});
+
+describe("random legal walks driven by canMove stay on the board and off the walls", () => {
+  for (const size of UI_SIZES) {
+    it(`size ${size}: 20000 attempted moves`, () => {
+      const walls = make(size, `walk-${size}`);
+      const rng = makeRng(`walk-dirs-${size}`);
+      let r = 0;
+      let c = 0;
+      let applied = 0;
+      const faults: string[] = [];
+      for (let i = 0; i < 20000; i++) {
+        const { bit, dr, dc, back } = rng.pick(RAW_DIRS);
+        if (!canMove(walls, size, size, r, c, dr, dc)) continue;
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr < 0 || nc < 0 || nr >= size || nc >= size) faults.push(`step ${i} left the board`);
+        else if (!(walls[r][c] & bit) || !(walls[nr][nc] & back)) faults.push(`step ${i} crossed a wall`);
+        r = nr;
+        c = nc;
+        applied++;
+      }
+      expect(faults).toEqual([]);
+      expect(applied).toBeGreaterThan(0);
+    });
+  }
+});
+
+describe("audit self-check — a deliberately broken maze is flagged", () => {
+  it("cutting the unique route to the exit is reported as unreachable", () => {
+    const size = 11;
+    const walls = make(size, "self-check");
+    const { path } = auditMaze(walls, size);
+    expect(path).not.toBeNull();
+    // Close the last passage of the route on both sides. In a perfect maze that
+    // single cut disconnects the exit, so the audit must report both the missing
+    // path and the reduced reachable count.
+    const [r, c] = path![path!.length - 2];
+    const [nr, nc] = path![path!.length - 1];
+    const cut = RAW_DIRS.find((d) => d.dr === nr - r && d.dc === nc - c)!;
+    walls[r][c] &= ~cut.bit;
+    walls[nr][nc] &= ~cut.back;
+    const broken = auditMaze(walls, size);
+    expect(broken.path).toBeNull();
+    expect(broken.reached).toBeLessThan(size * size);
+    expect(broken.wallFaults).toEqual([]);
+  });
+
+  it("a one-sided passage bit is reported as not mirrored", () => {
+    const size = 11;
+    const walls = make(size, "self-check");
+    // Open E on (0,0) without opening W on (0,1); if that passage already
+    // exists, close only the (0,1) side instead. Either way one side disagrees.
+    if (!(walls[0][0] & 2)) {
+      walls[0][0] |= 2;
+    } else {
+      walls[0][1] &= ~8;
+    }
+    const broken = auditMaze(walls, size);
+    expect(broken.wallFaults.some((f) => f.includes("not mirrored"))).toBe(true);
+  });
+});

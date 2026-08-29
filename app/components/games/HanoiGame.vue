@@ -4,9 +4,12 @@
 
 // ---- pure game logic (shared with unit tests) ----
 import {
+  DISK_COUNTS,
+  DAILY_DISK_RANGE,
   initPegs as createPegs,
   isLegalMove,
   isWin as hanoiIsWin,
+  optimalMoves,
 } from "~/games/hanoi";
 
 const accent = "#4dd4ac";
@@ -30,7 +33,7 @@ const overlay = reactive({ open: false, optimal: false });
 const bestMap = ref({});            // keyed by numDisks
 const diskSeg = ref(3);             // segmented control (non-daily)
 
-const optimal = computed(() => Math.pow(2, numDisks.value) - 1);
+const optimal = computed(() => optimalMoves(numDisks.value));
 const bestForN = computed(() => bestMap.value[numDisks.value] ?? null);
 
 function initPegs(n) {
@@ -44,7 +47,7 @@ function initPegs(n) {
 function regenerate() {
   const r = makeRng(props.seed);
   if (props.daily) {
-    numDisks.value = r.int(4, 6);
+    numDisks.value = r.int(DAILY_DISK_RANGE.min, DAILY_DISK_RANGE.max);
   } else {
     numDisks.value = diskSeg.value;
   }
@@ -228,7 +231,7 @@ onMounted(() => {
         <div v-if="!daily" class="hanoi-seg-wrap">
           <div class="seg">
             <button
-              v-for="n in [3, 4, 5, 6]"
+              v-for="n in DISK_COUNTS"
               :key="n"
               :class="{ 'is-active': diskSeg === n }"
               :aria-pressed="diskSeg === n"

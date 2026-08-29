@@ -6,6 +6,23 @@
 /** Three pegs: each is an array of disk sizes, largest disk at index 0, top disk last. */
 export type Pegs = number[][];
 
+/** Disk counts offered by the difficulty selector in free play. */
+export const DISK_COUNTS: readonly number[] = [3, 4, 5, 6];
+
+/** Daily mode draws its disk count from this inclusive range. */
+export const DAILY_DISK_RANGE = { min: 4, max: 6 } as const;
+
+/** Index of the goal peg (peg C). The tower starts on peg 0 (peg A). */
+export const GOAL_PEG = 2;
+
+/**
+ * Minimum number of moves needed to solve n disks: 2^n − 1.
+ * This is the value the HUD shows as the optimal move count.
+ */
+export function optimalMoves(n: number): number {
+  return 2 ** n - 1;
+}
+
 /**
  * Build the initial peg state for n disks.
  * All disks start on peg 0 in order: largest (n) at index 0, smallest (1) on top.
@@ -45,12 +62,14 @@ export function applyMove(pegs: Pegs, from: number, to: number): Pegs {
 }
 
 /**
- * Return true when all disks are stacked (in order) on the goal peg (index 2).
- * numDisks is required because an empty peg[2] before any disks are moved
+ * Return true when all disks are stacked on the goal peg (peg C, index 2).
+ * Only the count is checked: legal moves never place a larger disk on a
+ * smaller one, so every reachable peg is sorted and a full goal peg is in order.
+ * numDisks is required because an empty goal peg before any disks are moved
  * would otherwise pass (length 0 === 0).
  */
 export function isWin(pegs: Pegs, numDisks: number): boolean {
-  return pegs[2].length === numDisks;
+  return pegs[GOAL_PEG].length === numDisks;
 }
 
 /** A single step in the solver output: move from peg `from` to peg `to`. */
@@ -67,7 +86,7 @@ export interface HanoiMove {
 export function solveHanoi(
   n: number,
   source: number = 0,
-  target: number = 2,
+  target: number = GOAL_PEG,
   aux: number = 1
 ): HanoiMove[] {
   if (n === 0) return [];

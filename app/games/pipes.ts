@@ -49,14 +49,19 @@ export interface PipesGrid {
   /** Number of rows and columns (always square). */
   size: number;
   /**
-   * solved[r][c]: the target bitmask for each cell (the unique solved state).
-   * In a solved grid, every connection is mutual: if tile A points toward B,
-   * B points back toward A, and the spanning tree reaches every cell from the source.
+   * solved[r][c]: the reference solution — the spanning tree the puzzle was
+   * built from. Every connection is mutual (if tile A points toward B, B points
+   * back toward A) and the tree reaches every cell from the source.
+   * It is not necessarily the only winning layout: symmetric shapes can admit
+   * another rotation of the same tiles that also satisfies the rules, and
+   * `isSolved` accepts any such layout.
    */
   solved: number[][];
   /**
    * initial[r][c]: the scrambled starting bitmask presented to the player.
-   * Built by applying a random number of CW rotations (0–3) to each solved cell.
+   * Built by applying a random number of CW rotations (0–3) to each solved cell,
+   * then nudged one extra step if that happened to land on a winning layout, so
+   * the player always starts from an unsolved board (except on a 1×1 grid).
    */
   initial: number[][];
   /** Row index of the source cell (centre of the grid). */
@@ -72,7 +77,10 @@ export interface PipesGrid {
  *  1. Randomised DFS from the centre produces a spanning tree — guarantees
  *     every cell is reachable and every connection is mutual (no leaks).
  *  2. Each cell is scrambled by a random 0–3 CW rotation.
+ *  3. If the scramble happens to satisfy the rules already, one tile is
+ *     nudged a further quarter turn so the board starts unsolved.
  *
+ * The puzzle is always solvable: rotating every tile back to `solved` wins.
  * The function is pure and deterministic for a given `rng`.
  */
 export function generateGrid(G: number, rng: Rng): PipesGrid {
@@ -117,6 +125,26 @@ export function generateGrid(G: number, rng: Rng): PipesGrid {
     for (let c = 0; c < G; c++) {
       const rotations = rng.int(0, 3);
       initial[r][c] = rotateCWK(solved[r][c], rotations);
+    }
+  }
+
+  // Guard: independent per-cell rotations can land on a layout that already
+  // satisfies the rules (vanishingly unlikely on the 5×5–9×9 boards the UI
+  // offers, but a real 1-in-256 event on a 2×2 board). Nudge the first tile
+  // whose shape changes under a quarter turn one extra step CW. In a winning
+  // layout that tile drops a connector its neighbour still points at, so the
+  // board is no longer solved; the tile remains a rotation of its solved mask,
+  // so the puzzle stays solvable. Only a 1×1 board (single empty tile) has no
+  // such tile and is left as is.
+  if (isSolved(initial, G, srcR, srcC)) {
+    nudge: for (let r = 0; r < G; r++) {
+      for (let c = 0; c < G; c++) {
+        const m = initial[r][c];
+        if (rotateCW(m) !== m) {
+          initial[r][c] = rotateCW(m);
+          break nudge;
+        }
+      }
     }
   }
 

@@ -1,15 +1,17 @@
 <script setup>
 /* 二進位 Binario (Takuzu) — fill the grid with 0s and 1s.
-   Rules: no three identical consecutive in any row/col; equal counts per row/col.
+   Rules: no three identical consecutive in any row/col; equal counts per row/col;
+   every row and every column is unique.
    A full valid solution is generated via backtracking with rng, then cells are
    removed. Given cells are locked; clicking empty cells cycles empty→0→1→empty.
-   Live-validation highlights violated cells in red. */
+   Live-validation highlights violated cells in red. Any grid that satisfies the
+   rules counts as a win — it does not have to match the stored solution. */
 
 import {
   generatePuzzle,
-  validateAll,
   hasTriple,
   checkWinCondition,
+  findDuplicateLines,
 } from "~/games/binario";
 
 const accent = "#7ed957";
@@ -37,6 +39,10 @@ const elapsed = ref(0);
 const bestTime = ref(null);
 const overlay = reactive({ open: false, title: "", sub: "" });
 let timerInterval = null;
+
+// Complete rows / columns that duplicate another complete row / column
+// (rule: every row and column must be unique). Incomplete lines are ignored.
+const duplicateLines = computed(() => findDuplicateLines(cells.value, gridSize.value));
 
 function generate() {
   clearInterval(timerInterval);
@@ -121,6 +127,10 @@ function violatesCell(idx) {
     const half = size / 2;
     if (col.filter(x => x === v).length > half) return true;
   }
+
+  // a complete row / column identical to another complete row / column
+  const dup = duplicateLines.value;
+  if (dup.rows.includes(r) || dup.cols.includes(c)) return true;
 
   return false;
 }

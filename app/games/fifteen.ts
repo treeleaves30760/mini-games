@@ -86,9 +86,14 @@ export function isMovable(board: number[], n: number, tileIdx: number): boolean 
 /**
  * Return a new board with the blank moved one step in `dir`
  * (the adjacent tile slides into the blank).
- * Throws if the move is not legal.
+ * Throws if the move is not legal (the blank sits on that edge, or `dir` is not
+ * a Direction), so a caller can never obtain a wrapped-around or out-of-range
+ * board — which would silently break the solvability invariant.
  */
 export function applyMove(board: number[], dir: Direction, n: number): number[] {
+  if (!legalMoves(board, n).includes(dir)) {
+    throw new Error(`Illegal move "${dir}": the blank cannot slide that way`);
+  }
   const next = board.slice();
   const bi = next.indexOf(0);
   const r = (bi / n) | 0;
@@ -100,6 +105,37 @@ export function applyMove(board: number[], dir: Direction, n: number): number[] 
   else ti = r * n + (c + 1);
   next[bi] = next[ti];
   next[ti] = 0;
+  return next;
+}
+
+// ---- Slide a whole run (what a click does in the UI) ----------------------
+
+/**
+ * Slide the whole run of tiles between flat index `idx` and the blank one cell
+ * toward the blank, leaving the blank at `idx` — the effect of clicking a tile
+ * in the UI. `idx` must share a row or a column with the blank; otherwise (or
+ * when `idx` is the blank itself / out of range) returns null and the board is
+ * left untouched. A run slide is exactly 1..N-1 consecutive `applyMove` steps
+ * in one direction, so it can never break solvability.
+ */
+export function slideRun(board: number[], n: number, idx: number): number[] | null {
+  const bi = board.indexOf(0);
+  if (idx < 0 || idx >= board.length || idx === bi) return null;
+  const tr = (idx / n) | 0;
+  const tc = idx % n;
+  const br = (bi / n) | 0;
+  const bc = bi % n;
+  if (tr !== br && tc !== bc) return null; // not aligned with the blank
+  // Step from the blank toward the clicked tile: ±1 within a row, ±n within a column.
+  const step = tr === br ? (tc > bc ? 1 : -1) : tr > br ? n : -n;
+  const next = board.slice();
+  let cursor = bi;
+  while (cursor !== idx) {
+    const from = cursor + step;
+    next[cursor] = next[from];
+    cursor = from;
+  }
+  next[idx] = 0;
   return next;
 }
 
@@ -153,24 +189,33 @@ const OPP: Record<Direction, Direction> = {
 };
 
 /**
- * Generate a scrambled, always-SOLVABLE board of side length n,
- * using the provided Rng for deterministic output.
+ * Generate a scrambled, always-SOLVABLE, never-already-solved board of side
+ * length n (n >= 2), using the provided Rng for deterministic output.
  *
  * Strategy: start from the solved state and apply many random legal moves,
  * never immediately reversing the last move. This guarantees solvability by
- * construction (every reachable state from a solved state is solvable).
+ * construction (every state reachable from the solved state is solvable).
  */
 export function generateBoard(n: number, rng: Rng): number[] {
+  if (!Number.isInteger(n) || n < 2) {
+    throw new RangeError(`Board size must be an integer >= 2, got ${n}`);
+  }
   let board = goalState(n);
   const steps = Math.max(120, n * n * 30);
   let last: Direction | null = null;
   for (let i = 0; i < steps; i++) {
-    let moves = legalMoves(board, n).filter((m) => m !== (last ? OPP[last] : null));
-    // For n≥2 the blank always has ≥2 legal moves; filtering out at most one reverse-move always leaves ≥1.
-    /* v8 ignore start */ if (moves.length === 0) moves = legalMoves(board, n); /* v8 ignore stop */
+    // For n >= 2 the blank always has >= 2 legal moves, so excluding the single
+    // reverse move always leaves at least one candidate to pick from.
+    const reverse = last ? OPP[last] : null;
+    const moves = legalMoves(board, n).filter((m) => m !== reverse);
     const m = rng.pick(moves);
     board = applyMove(board, m, n);
     last = m;
   }
+  // The walk can land back on the goal: on a 2×2 the non-reversing walk is a
+  // fixed 12-move cycle and 120 steps is a whole number of laps. One extra
+  // legal move always fixes it — every neighbour of the goal is unsolved and,
+  // being reachable, still solvable.
+  if (isSolved(board)) board = applyMove(board, rng.pick(legalMoves(board, n)), n);
   return board;
 }

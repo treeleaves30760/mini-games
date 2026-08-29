@@ -3,9 +3,10 @@ import { makeRng } from "~/utils/rng";
 import {
   DIRV, DIRS, OPP, DIFFS,
   inBounds, sweepClear, growSnake, segDir, cellsOf, headFurthest,
-  chooseExit, buildOne, solveDepth, isRemovable, isWon,
+  chooseExit, buildOne, solveDepth, generateLevel, isRemovable, isWon,
 } from "~/games/arrows";
-import type { Cell, Dir, PieceData } from "~/games/arrows";
+import type { Cell, Dir, DiffConfig, PieceData } from "~/games/arrows";
+import type { Rng } from "~/utils/rng";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -445,5 +446,348 @@ describe("full solve simulation", () => {
       steps++;
     }
     expect(isWon(board)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Independent solver — written from the rules alone and deliberately NOT built
+// on isRemovable / solveDepth, so it can cross-check both.
+//
+// Rule under test: a piece may leave iff every cell it sweeps (each of its own
+// cells stepped along `dir` until it falls off the board) is empty, one of its
+// own cells, or belongs to a piece that has already left. A blocked piece does
+// not move at all; a free piece leaves the board entirely in one move.
+// ---------------------------------------------------------------------------
+
+type Live = PieceData & { id: number };
+
+/** Flat (r*N+c) → index of the piece occupying that cell. */
+function ownerMap(pieces: PieceData[], N: number): Map<number, number> {
+  const m = new Map<number, number>();
+  pieces.forEach((p, i) => {
+    for (const cl of p.cells) m.set(cl.r * N + cl.c, i);
+  });
+  return m;
+}
+
+/** Independent movement rule. `mask` has bit j set for every piece still on the board. */
+function canLeave(pieces: PieceData[], owner: Map<number, number>, i: number, mask: number, N: number): boolean {
+  const [dr, dc] = DIRV[pieces[i].dir];
+  for (const cl of pieces[i].cells) {
+    for (let r = cl.r + dr, c = cl.c + dc; r >= 0 && r < N && c >= 0 && c < N; r += dr, c += dc) {
+      const o = owner.get(r * N + c);
+      if (o !== undefined && o !== i && (mask & (1 << o)) !== 0) return false;
+    }
+  }
+  return true;
+}
+
+/** DFS over the set of remaining pieces (bitmask state, memoised). Returns a
+ *  removal order (piece indices) that clears the board, or null if unsolvable. */
+function solveOrder(pieces: PieceData[], N: number): number[] | null {
+  const n = pieces.length;
+  if (n >= 31) throw new Error("bitmask solver supports fewer than 31 pieces");
+  const owner = ownerMap(pieces, N);
+  const memo = new Map<number, number[] | null>();
+  const rec = (mask: number): number[] | null => {
+    if (mask === 0) return [];
+    const hit = memo.get(mask);
+    if (hit !== undefined) return hit;
+    memo.set(mask, null);
+    for (let i = 0; i < n; i++) {
+      if ((mask & (1 << i)) === 0 || !canLeave(pieces, owner, i, mask, N)) continue;
+      const rest = rec(mask & ~(1 << i));
+      if (rest) {
+        const order = [i, ...rest];
+        memo.set(mask, order);
+        return order;
+      }
+    }
+    return null;
+  };
+  return rec((1 << n) - 1);
+}
+
+/** Give pieces ids the way the component does (1-based, in board order). */
+function toLive(pieces: PieceData[]): Live[] {
+  return pieces.map((p, i) => ({ ...p, id: i + 1 }));
+}
+
+/** Compact, order-preserving serialisation used for determinism goldens. */
+function serialise(pieces: PieceData[]): string {
+  return pieces
+    .map((p) => p.cells.map((cl) => `${cl.r}${cl.c}`).join("-") + ">" + p.dir[0])
+    .join("|");
+}
+
+describe("independent solver (self-check on hand-crafted boards)", () => {
+  it("finds the only order when a bent piece wraps a short one", () => {
+    // 3×3 board. A is a 4-cell hook (tail→head) (2,0)→(1,0)→(0,0)→(0,1), heading
+    // right. B is a single cell at (1,1) heading down. A's HEAD ray (0,2) is clear,
+    // but its middle cell (1,0) sweeps through (1,1) = B, so A is blocked until B
+    // leaves. This is exactly the "every cell, not just the head" rule.
+    const N = 3;
+    const A: PieceData = { cells: [{ r: 2, c: 0 }, { r: 1, c: 0 }, { r: 0, c: 0 }, { r: 0, c: 1 }], dir: "right" };
+    const B: PieceData = { cells: [{ r: 1, c: 1 }], dir: "down" };
+    expect(solveOrder([A, B], N)).toEqual([1, 0]);
+    // The game's own move function must agree at both states.
+    const [a, b] = toLive([A, B]);
+    expect(isRemovable(a, [a, b], N)).toBe(false);
+    expect(isRemovable(b, [a, b], N)).toBe(true);
+    expect(isRemovable(a, [a], N)).toBe(true);
+  });
+
+  it("returns null for mutually blocking pieces and for a 4-cycle of blockers", () => {
+    const N = 3;
+    const pair: PieceData[] = [
+      { cells: [{ r: 0, c: 0 }], dir: "right" },
+      { cells: [{ r: 0, c: 1 }], dir: "left" },
+    ];
+    expect(solveOrder(pair, N)).toBeNull();
+    expect(solveDepth(pair, N)).toBe(-1);
+    // Four singles chasing each other around a 2×2 block: X→Y→Z→W→X, every
+    // piece's first swept cell is the next piece, so nothing can ever leave.
+    const cycle: PieceData[] = [
+      { cells: [{ r: 0, c: 0 }], dir: "right" }, // X: sweeps (0,1) = Y
+      { cells: [{ r: 0, c: 1 }], dir: "down" },  // Y: sweeps (1,1) = Z
+      { cells: [{ r: 1, c: 1 }], dir: "left" },  // Z: sweeps (1,0) = W
+      { cells: [{ r: 1, c: 0 }], dir: "up" },    // W: sweeps (0,0) = X
+    ];
+    expect(solveOrder(cycle, N)).toBeNull();
+    expect(solveDepth(cycle, N)).toBe(-1);
+  });
+
+  it("solves an empty board with an empty order", () => {
+    expect(solveOrder([], 4)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Seed-corpus audit of the exact boards the UI shows (generateLevel = the
+// component's best-of-10 selection). Corpus: 300 arbitrary seeds plus every
+// Daily-Challenge-style "YYYY-MM-DD" seed of 2026 and 2027, for each preset.
+// ---------------------------------------------------------------------------
+
+function dateSeeds(year: number): string[] {
+  const out: string[] = [];
+  for (const d = new Date(year, 0, 1); d.getFullYear() === year; d.setDate(d.getDate() + 1)) {
+    out.push(`${year}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+const SEED_CORPUS: string[] = [
+  ...Array.from({ length: 300 }, (_, i) => `arrows-audit-${i}`),
+  ...dateSeeds(2026),
+  ...dateSeeds(2027),
+];
+
+const levelCache = new Map<string, { seed: string; pieces: PieceData[] }[]>();
+function levelsFor(cfg: DiffConfig): { seed: string; pieces: PieceData[] }[] {
+  let list = levelCache.get(cfg.key);
+  if (!list) {
+    list = SEED_CORPUS.map((seed) => ({ seed, pieces: generateLevel(makeRng(seed), cfg) }));
+    levelCache.set(cfg.key, list);
+  }
+  return list;
+}
+
+describe("seed-corpus audit: every generated level", () => {
+  it("corpus covers all presets and is deterministic (same seed → same board)", () => {
+    expect(SEED_CORPUS.length).toBe(300 + 365 + 365);
+    for (const cfg of DIFFS) {
+      expect(levelsFor(cfg)).toHaveLength(SEED_CORPUS.length);
+      for (const seed of ["2026-08-29", "arrows-audit-42"]) {
+        expect(serialise(generateLevel(makeRng(seed), cfg))).toBe(serialise(generateLevel(makeRng(seed), cfg)));
+      }
+    }
+  });
+
+  it("(e) is well-formed and non-degenerate: connected snakes, no overlap, sane size", () => {
+    const problems: string[] = [];
+    const check = (ok: boolean, msg: string) => { if (!ok) problems.push(msg); };
+    for (const cfg of DIFFS) {
+      const maxLen = Math.max(...cfg.lens);
+      for (const { seed, pieces } of levelsFor(cfg)) {
+        const tag = `${cfg.key}/${seed}`;
+        // Observed minima over this corpus: 6 / 7 / 9 pieces and exactly `fill`
+        // cells; the bounds below are looser so the check flags only genuinely
+        // degenerate boards (e.g. one or two arrows on an empty grid).
+        check(pieces.length >= 5, `${tag}: only ${pieces.length} pieces`);
+        check(pieces.length < 31, `${tag}: ${pieces.length} pieces exceeds solver mask`);
+        const seen = new Set<number>();
+        let cells = 0;
+        for (const p of pieces) {
+          check(p.cells.length >= 1 && p.cells.length <= maxLen, `${tag}: piece length ${p.cells.length}`);
+          check(DIRS.includes(p.dir), `${tag}: bad dir ${p.dir}`);
+          check(headFurthest(p.cells, p.dir), `${tag}: chevron not at leading tip`);
+          p.cells.forEach((cl, i) => {
+            check(inBounds(cl.r, cl.c, cfg.n), `${tag}: cell (${cl.r},${cl.c}) off board`);
+            const key = cl.r * cfg.n + cl.c;
+            check(!seen.has(key), `${tag}: cell (${cl.r},${cl.c}) used twice`);
+            seen.add(key);
+            if (i > 0) {
+              const prev = p.cells[i - 1];
+              check(Math.abs(cl.r - prev.r) + Math.abs(cl.c - prev.c) === 1, `${tag}: snake not 4-connected`);
+            }
+          });
+          cells += p.cells.length;
+        }
+        check(cells >= cfg.fill - 3 && cells <= cfg.n * cfg.n, `${tag}: ${cells} cells (fill ${cfg.fill})`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it("(a)(b) is clearable by the independent solver, and replaying its order through isRemovable wins", () => {
+    const mismatches: string[] = [];
+    for (const cfg of DIFFS) {
+      const N = cfg.n;
+      for (const { seed, pieces } of levelsFor(cfg)) {
+        const tag = `${cfg.key}/${seed}`;
+        const order = solveOrder(pieces, N);
+        expect(order, `${tag}: unsolvable`).not.toBeNull();
+        expect(new Set(order!).size, tag).toBe(pieces.length);
+        // solveDepth (the generator's safety net) must agree the board is solvable.
+        expect(solveDepth(pieces, N), tag).toBeGreaterThan(0);
+
+        const owner = ownerMap(pieces, N);
+        let mask = (1 << pieces.length) - 1;
+        let board = toLive(pieces);
+        for (const idx of order!) {
+          // Cross-check: the game's verdict for EVERY remaining piece must equal
+          // the independent rule at this state.
+          for (const q of board) {
+            const game = isRemovable(q, board, N);
+            const ref = canLeave(pieces, owner, q.id - 1, mask, N);
+            if (game !== ref) mismatches.push(`${tag} piece ${q.id}: game=${game} solver=${ref}`);
+          }
+          const p = board.find((q) => q.id === idx + 1)!;
+          expect(isRemovable(p, board, N), `${tag}: move ${idx} rejected by the game`).toBe(true);
+          board = board.filter((q) => q !== p); // the component's tap(): a free piece leaves entirely
+          mask &= ~(1 << idx);
+        }
+        expect(isWon(board), tag).toBe(true);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("(d) never dead-ends: any sequence of free removals clears the board and a hint always exists", () => {
+    // The component has no lose state; its only "stuck" signal is the hint
+    // button finding nothing. Play each board to the end along seeded random
+    // free-piece orders and confirm a removable piece exists at every state.
+    for (const cfg of DIFFS) {
+      const N = cfg.n;
+      for (const { seed, pieces } of levelsFor(cfg)) {
+        const rng = makeRng(`order-${seed}`);
+        for (let k = 0; k < 2; k++) {
+          let board = toLive(pieces);
+          while (board.length) {
+            const free = board.filter((p) => isRemovable(p, board, N)); // hint() = first of these
+            expect(free.length, `${cfg.key}/${seed}: deadlock with ${board.length} pieces left`).toBeGreaterThan(0);
+            const p = rng.pick(free);
+            board = board.filter((q) => q !== p);
+          }
+          expect(isWon(board)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("raw buildOne candidates (before best-of-10 selection) are solvable too", () => {
+    // generateLevel only ever hands out a verified board, but the invariant the
+    // design relies on is that reverse placement never yields an unsolvable
+    // candidate in the first place. 10 candidates × 300 seeds × 3 presets.
+    for (const cfg of DIFFS) {
+      for (let i = 0; i < 300; i++) {
+        const rng = makeRng(`raw-${cfg.key}-${i}`);
+        for (let k = 0; k < 10; k++) {
+          const built = buildOne(rng, cfg);
+          expect(built.length, `${cfg.key} raw seed ${i}#${k}: empty board`).toBeGreaterThan(0);
+          expect(solveOrder(built, cfg.n), `${cfg.key} raw seed ${i}#${k}: unsolvable`).not.toBeNull();
+        }
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateLevel — the component's board selection
+// ---------------------------------------------------------------------------
+describe("generateLevel", () => {
+  const cfg = DIFFS[0];
+  const deadlock: PieceData[] = [
+    { cells: [{ r: 0, c: 0 }], dir: "right" },
+    { cells: [{ r: 0, c: 1 }], dir: "left" },
+  ];
+  const single: PieceData[] = [{ cells: [{ r: 0, c: 0 }], dir: "right" }];
+  // depth 2: (0,0)→right is blocked until (0,1)→right leaves
+  const chained: PieceData[] = [
+    { cells: [{ r: 0, c: 0 }], dir: "right" },
+    { cells: [{ r: 0, c: 1 }], dir: "right" },
+  ];
+  // depth 1 but three pieces
+  const parallel: PieceData[] = [
+    { cells: [{ r: 0, c: 0 }], dir: "right" },
+    { cells: [{ r: 1, c: 0 }], dir: "right" },
+    { cells: [{ r: 2, c: 0 }], dir: "right" },
+  ];
+  // depth 1, one piece, two cells (more cells than `single`)
+  const longSingle: PieceData[] = [{ cells: [{ r: 0, c: 0 }, { r: 0, c: 1 }], dir: "right" }];
+  const sequence = (seq: PieceData[][]) => {
+    let k = 0;
+    return (_rng: Rng, _cfg: DiffConfig) => seq[k++];
+  };
+
+  it("draws exactly `tries` candidates from the builder (default 10) and returns a solvable board", () => {
+    let calls = 0;
+    const build = (rng: Rng, c: DiffConfig) => { calls++; return buildOne(rng, c); };
+    const built = generateLevel(makeRng("gen-count"), cfg, { build });
+    expect(calls).toBe(10);
+    expect(solveDepth(built, cfg.n)).toBeGreaterThan(0);
+    calls = 0;
+    generateLevel(makeRng("gen-count"), cfg, { build, tries: 3 });
+    expect(calls).toBe(3);
+  });
+
+  it("is exactly best-of-10 buildOne draws from the same rng stream (component parity)", () => {
+    for (const c of DIFFS) {
+      const rng = makeRng("parity");
+      let best: { built: PieceData[]; score: number } | null = null;
+      for (let k = 0; k < 10; k++) {
+        const built = buildOne(rng, c);
+        const depth = solveDepth(built, c.n);
+        const cells = built.reduce((s, p) => s + p.cells.length, 0);
+        const score = depth * 1000 + built.length * 10 + cells;
+        if (!best || score > best.score) best = { built, score };
+      }
+      expect(generateLevel(makeRng("parity"), c)).toEqual(best!.built);
+    }
+  });
+
+  it("pins the board for a Daily-style seed (seed determinism golden)", () => {
+    // Regenerated only if the generator is intentionally changed — a change here
+    // means every seeded/Daily board changes.
+    expect(serialise(generateLevel(makeRng("2026-08-29"), cfg))).toBe(
+      "11>l|33>l|20>d|31-41>d|42-32>u|01>r|22-12>u|14>u|10>l|44>r|03-04>r",
+    );
+  });
+
+  it("rejects unsolvable candidates and returns the solvable one", () => {
+    expect(generateLevel(makeRng("x"), cfg, { tries: 3, build: sequence([deadlock, single, deadlock]) })).toBe(single);
+  });
+
+  it("prefers the deeper solution, then more pieces, then more cells; keeps the first on ties", () => {
+    expect(generateLevel(makeRng("x"), cfg, { tries: 2, build: sequence([parallel, chained]) })).toBe(chained);
+    expect(generateLevel(makeRng("x"), cfg, { tries: 2, build: sequence([chained, parallel]) })).toBe(chained);
+    expect(generateLevel(makeRng("x"), cfg, { tries: 2, build: sequence([single, parallel]) })).toBe(parallel);
+    expect(generateLevel(makeRng("x"), cfg, { tries: 2, build: sequence([single, longSingle]) })).toBe(longSingle);
+    const twin = single.map((p) => ({ ...p }));
+    expect(generateLevel(makeRng("x"), cfg, { tries: 2, build: sequence([single, twin]) })).toBe(single);
+  });
+
+  it("throws instead of handing out an unverified board when no candidate is solvable", () => {
+    expect(() => generateLevel(makeRng("x"), cfg, { tries: 2, build: () => deadlock })).toThrow(/no solvable candidate/);
   });
 });

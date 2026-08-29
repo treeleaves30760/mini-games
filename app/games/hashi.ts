@@ -1,11 +1,13 @@
 /* Hashi (Hashiwokakero / Bridges) — framework-free pure game logic.
-   Island/bridge generation, legality checks, crossing detection, and win
-   detection are all deterministic given a seed, so they can be unit-tested
+   Island/bridge generation, legality checks, crossing detection, solving and
+   win detection are all deterministic given a seed, so they can be unit-tested
    independently of the Vue component's animation / localStorage / timer.
 
-   Puzzle invariants guaranteed by the generator:
+   Puzzle invariants guaranteed by the generator — and re-checked by
+   isValidPuzzle() and solveHashi() before buildPuzzle() hands a puzzle out:
    - Every island's clue equals the total bridges incident to it in the solution.
-   - Bridges run only horizontally or vertically between two islands.
+   - Bridges run only horizontally or vertically between two islands and never
+     pass through a third island.
    - At most 2 bridges between any pair of islands.
    - No two bridges cross each other.
    - The solution graph is fully connected (every island reachable from any other).
@@ -44,7 +46,7 @@ export interface HashiPuzzle {
   /** Grid height (rows). */
   gr: number;
   islands: Island[];
-  /** The unique valid solution — use for verification. */
+  /** One valid solution (the one the generator built the puzzle from). */
   solution: BridgeEdge[];
 }
 
@@ -67,6 +69,13 @@ export const DIRS4: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
   [0, -1],
 ];
+
+/**
+ * Upper bound on generation attempts per buildPuzzle() call. On the shipped
+ * difficulties the first attempt succeeds almost always; the bound only matters
+ * for degenerate grids that cannot hold the requested island count.
+ */
+const MAX_BUILD_ATTEMPTS = 200;
 
 // ---------------------------------------------------------------------------
 // Difficulty presets
@@ -92,8 +101,14 @@ export const DIFFICULTIES: Difficulty[] = [
 
 /**
  * Generate a Hashi puzzle for the given difficulty, using the provided RNG
- * (or seed).  Makes up to 40 attempts and returns the first valid result.
- * The returned puzzle is guaranteed to have a connected solution.
+ * (or seed). Attempts are made until one yields a puzzle that
+ *   1. passes the independent rule check (isValidPuzzle),
+ *   2. is confirmed solvable by the solver (solveHashi), and
+ *   3. holds at least 60% of the difficulty's target island count.
+ * If no attempt reaches the island quota, the largest puzzle that passed the
+ * first two gates is returned instead, so a solvable puzzle is always handed
+ * out whenever the grid can hold one at all. Only a grid too small to hold
+ * three islands yields an empty puzzle.
  */
 export function buildPuzzle(
   rngOrSeed: Rng | string | number | null | undefined,
@@ -107,25 +122,27 @@ export function buildPuzzle(
       : makeRng(rngOrSeed as string | number | null);
 
   const { cols: gc, rows: gr, targetIslands: target } = diff;
+  const minIslands = Math.ceil(target * 0.6);
 
-  for (let attempt = 0; attempt < 40; attempt++) {
+  // Largest valid-but-undersized candidate seen so far (fallback only).
+  let best: HashiPuzzle | null = null;
+
+  for (let attempt = 0; attempt < MAX_BUILD_ATTEMPTS; attempt++) {
     const result = tryGenerate(rng, gc, gr, target);
-    if (result && result.islands.length >= Math.ceil(target * 0.6)) {
-      return result;
+    // The generator upholds the rules by construction; the validator and the
+    // solver are an independent gate so that a broken puzzle can never reach
+    // the player.
+    if (!result || !isValidPuzzle(result) || solveHashi(result) === null) {
+      continue;
     }
+    if (result.islands.length >= minIslands) return result;
+    if (!best || result.islands.length > best.islands.length) best = result;
   }
-  // fallback: one more attempt, return empty puzzle on failure
-  return (
-    tryGenerate(rng, gc, gr, target) ?? {
-      islands: [],
-      solution: [],
-      gc,
-      gr,
-    }
-  );
+
+  return best ?? { islands: [], solution: [], gc, gr };
 }
 
-/** Internal: one generation attempt.  Returns null if the result is invalid. */
+/** Internal: one generation attempt.  Returns null if the result is too small. */
 function tryGenerate(
   rng: Rng,
   gc: number,
@@ -155,34 +172,39 @@ function tryGenerate(
     return r >= 1 && r < gr - 1 && c >= 1 && c < gc - 1;
   }
 
-  function allNeighborsEmpty(r: number, c: number): boolean {
+  /**
+   * True if (r, c) can host a new island: the cell holds neither an island nor
+   * a bridge (an island placed on a bridge cell would put that bridge through
+   * the island, making the stored solution illegal), and no orthogonal
+   * neighbour holds an island. Only interior cells are passed in, so all four
+   * neighbours are inside the grid.
+   */
+  function cellFree(r: number, c: number): boolean {
+    if (islandGrid[r][c] !== -1 || occupied[r][c] !== null) return false;
     for (const [dr, dc] of DIRS4) {
-      const nr = r + dr;
-      const nc = c + dc;
-      /* c8 ignore start */
-      if (nr >= 0 && nr < gr && nc >= 0 && nc < gc) {
-        if (islandGrid[nr][nc] !== -1) return false;
-      }
-      /* c8 ignore stop */
+      if (islandGrid[r + dr][c + dc] !== -1) return false;
     }
-    return islandGrid[r][c] === -1;
+    return true;
   }
 
+  /**
+   * True if every cell strictly between the two endpoints is free of islands
+   * and of bridges. Any occupied cell is rejected regardless of orientation:
+   * a parallel overlap can only arise when the destination sits on an existing
+   * bridge, which cellFree() already forbids, so it never needs allowing.
+   */
   function canPlaceBridge(
     r1: number,
     c1: number,
     r2: number,
     c2: number,
-    orientation: string,
   ): boolean {
     const dr = r2 > r1 ? 1 : r2 < r1 ? -1 : 0;
     const dc = c2 > c1 ? 1 : c2 < c1 ? -1 : 0;
     let r = r1 + dr;
     let c = c1 + dc;
     while (r !== r2 || c !== c2) {
-      if (islandGrid[r][c] !== -1) return false;
-      if (occupied[r][c] !== null && occupied[r][c] !== orientation)
-        return false;
+      if (islandGrid[r][c] !== -1 || occupied[r][c] !== null) return false;
       r += dr;
       c += dc;
     }
@@ -233,8 +255,8 @@ function tryGenerate(
       const nc = src.c + dc * d;
       if (nr < 0 || nr >= gr || nc < 0 || nc >= gc) break;
       if (!isInterior(nr, nc)) continue;
-      if (!allNeighborsEmpty(nr, nc)) continue;
-      if (!canPlaceBridge(src.r, src.c, nr, nc, orientation)) continue;
+      if (!cellFree(nr, nc)) continue;
+      if (!canPlaceBridge(src.r, src.c, nr, nc)) continue;
       candidates.push({ r: nr, c: nc });
     }
 
@@ -255,11 +277,9 @@ function tryGenerate(
 
   if (islandList.length < 3) return null;
 
-  // Verify all islands are connected via solution edges (BFS).
-  /* c8 ignore start */
-  if (!isConnected(islandList.map((n) => n.id), solutionEdges)) return null;
-  /* c8 ignore stop */
-
+  // Every island was attached to an existing one by a solution edge, so the
+  // solution is a spanning tree; buildPuzzle() re-verifies connectivity along
+  // with every other rule through isValidPuzzle() anyway.
   return {
     islands: islandList.map((isl) => ({
       id: isl.id,
@@ -271,6 +291,181 @@ function tryGenerate(
     gc,
     gr,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Solution helpers and validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Expand a puzzle's solution edges into PlayerBridge records (with endpoint
+ * coordinates) so they can be fed to wouldCross() / checkWin(). Every edge is
+ * assumed to reference existing islands, which holds for generator output and
+ * is checked up front by isValidPuzzle().
+ */
+export function solutionToBridges(
+  puzzle: Pick<HashiPuzzle, "islands" | "solution">,
+): PlayerBridge[] {
+  const byId = new Map(puzzle.islands.map((isl) => [isl.id, isl]));
+  return puzzle.solution.map((e) => {
+    const a = byId.get(e.id1)!;
+    const b = byId.get(e.id2)!;
+    return { ...e, r1: a.r, c1: a.c, r2: b.r, c2: b.c };
+  });
+}
+
+/**
+ * Independent rule check of a puzzle descriptor against its stored solution.
+ * Returns true iff:
+ *   - there is at least one island, and every island sits inside the grid at a
+ *     distinct cell with a distinct id;
+ *   - every solution edge joins two distinct existing islands in the same row
+ *     or column, carries 1 or 2 bridges, and no third island lies on its path;
+ *   - each island pair appears at most once in the solution;
+ *   - no two solution bridges cross;
+ *   - every clue equals the number of bridges incident to the island;
+ *   - the solution connects all islands.
+ */
+export function isValidPuzzle(puzzle: HashiPuzzle): boolean {
+  const { islands, solution, gc, gr } = puzzle;
+  if (islands.length === 0) return false;
+
+  const byId = new Map<number, Island>();
+  const cells = new Set<string>();
+  for (const isl of islands) {
+    if (isl.r < 0 || isl.r >= gr || isl.c < 0 || isl.c >= gc) return false;
+    const cell = `${isl.r},${isl.c}`;
+    if (byId.has(isl.id) || cells.has(cell)) return false;
+    byId.set(isl.id, isl);
+    cells.add(cell);
+  }
+
+  const pairs = new Set<string>();
+  for (const e of solution) {
+    const a = byId.get(e.id1);
+    const b = byId.get(e.id2);
+    if (!a || !b || a === b) return false;
+    if (e.count < 1 || e.count > 2) return false;
+    if (a.r !== b.r && a.c !== b.c) return false;
+    if (!pathClear(a, b, islands)) return false;
+    const pair = `${Math.min(e.id1, e.id2)}-${Math.max(e.id1, e.id2)}`;
+    if (pairs.has(pair)) return false;
+    pairs.add(pair);
+  }
+
+  const bridges = solutionToBridges(puzzle);
+  for (let i = 0; i < bridges.length; i++) {
+    const b = bridges[i];
+    if (wouldCross(b.r1, b.c1, b.r2, b.c2, bridges.slice(i + 1))) return false;
+  }
+
+  // Clue totals and connectivity are exactly the win condition.
+  return checkWin(islands, bridges);
+}
+
+// ---------------------------------------------------------------------------
+// Solver
+// ---------------------------------------------------------------------------
+
+/**
+ * Backtracking solver. Candidate edges are island pairs that share a row or
+ * column with no island in between; each candidate is assigned 0, 1 or 2
+ * bridges in turn. Pruning: an island may never exceed its clue, it must still
+ * be able to reach its clue with the edges left undecided, and a bridge may
+ * not cross one already placed. A leaf is accepted when the placed bridges
+ * connect all islands. Returns the placed bridges (count > 0 only, in
+ * candidate order) or null when the puzzle has no solution.
+ *
+ * Islands are assumed to occupy distinct cells (true for generator output).
+ */
+export function solveHashi(
+  puzzle: Pick<HashiPuzzle, "islands">,
+): BridgeEdge[] | null {
+  const islands = puzzle.islands;
+  const n = islands.length;
+  if (n === 0) return null;
+
+  // Candidate edges, as PlayerBridge records so wouldCross() can be reused.
+  // a / b are indices into `islands`.
+  const cands: { a: number; b: number; bridge: PlayerBridge }[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const A = islands[i];
+      const B = islands[j];
+      if (A.r !== B.r && A.c !== B.c) continue;
+      if (!pathClear(A, B, islands)) continue;
+      cands.push({
+        a: i,
+        b: j,
+        bridge: { id1: A.id, id2: B.id, count: 1, r1: A.r, c1: A.c, r2: B.r, c2: B.c },
+      });
+    }
+  }
+  const m = cands.length;
+
+  // crossers[k] = indices of the candidates that would cross candidate k.
+  const crossers: number[][] = cands.map((ck) =>
+    cands.flatMap((cj, j) => {
+      const b = ck.bridge;
+      return wouldCross(b.r1, b.c1, b.r2, b.c2, [cj.bridge]) ? [j] : [];
+    }),
+  );
+
+  const counts: number[] = new Array(m).fill(0);
+  const deg: number[] = new Array(n).fill(0);
+  // Undecided candidate edges per island.
+  const open: number[] = new Array(n).fill(0);
+  for (const e of cands) {
+    open[e.a]++;
+    open[e.b]++;
+  }
+
+  /** Island i has not exceeded its clue and can still reach it. */
+  const feasible = (i: number): boolean => {
+    const need = islands[i].clue - deg[i];
+    return need >= 0 && need <= 2 * open[i];
+  };
+
+  for (let i = 0; i < n; i++) {
+    if (!feasible(i)) return null;
+  }
+
+  const ids = islands.map((isl) => isl.id);
+  const placed = (): BridgeEdge[] =>
+    cands.flatMap((e, k) =>
+      counts[k] > 0
+        ? [{ id1: e.bridge.id1, id2: e.bridge.id2, count: counts[k] }]
+        : [],
+    );
+
+  function search(k: number): boolean {
+    if (k === m) {
+      // feasible() forces deg === clue once an island's last edge is decided
+      // (and islands without candidates were rejected up front unless their
+      // clue is 0), so only connectivity remains to be checked here.
+      return isConnected(ids, placed());
+    }
+    const e = cands[k];
+    const blocked = crossers[k].some((j) => counts[j] > 0);
+    open[e.a]--;
+    open[e.b]--;
+    // Try the larger counts first: it homes in on a solution faster on
+    // solvable puzzles and costs nothing extra on unsolvable ones.
+    for (let cnt = blocked ? 0 : 2; cnt >= 0; cnt--) {
+      counts[k] = cnt;
+      deg[e.a] += cnt;
+      deg[e.b] += cnt;
+      if (feasible(e.a) && feasible(e.b) && search(k + 1)) return true;
+      deg[e.a] -= cnt;
+      deg[e.b] -= cnt;
+    }
+    counts[k] = 0;
+    open[e.a]++;
+    open[e.b]++;
+    return false;
+  }
+
+  return search(0) ? placed() : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +593,8 @@ export function islandDegree(id: number, playerBridges: PlayerBridge[]): number 
  *   1. Every island's degree equals its clue.
  *   2. All islands are connected (single component).
  *
- * Satisfied-but-disconnected returns false.
+ * Any bridge layout meeting both conditions wins — not only the generator's
+ * stored solution. Satisfied-but-disconnected returns false.
  */
 export function checkWin(
   islands: Island[],

@@ -67,24 +67,78 @@ export function validateLine(line: (0 | 1 | null)[]): boolean {
   return true;
 }
 
+/** Row `r` of a flat `size × size` board. */
+export function getRow(arr: (0 | 1 | null)[], size: number, r: number): (0 | 1 | null)[] {
+  return arr.slice(r * size, r * size + size);
+}
+
+/** Column `c` of a flat `size × size` board. */
+export function getCol(arr: (0 | 1 | null)[], size: number, c: number): (0 | 1 | null)[] {
+  const col: (0 | 1 | null)[] = [];
+  for (let r = 0; r < size; r++) col.push(arr[r * size + c]);
+  return col;
+}
+
 /**
- * Validate a complete board: every row and every column must satisfy
- * `validateLine`.  Does NOT check row/column uniqueness (that constraint is
- * enforced during generation, not needed for win-detection).
+ * Indices of the lines that are complete (length `size`, no null) and
+ * identical to at least one other complete line.  Incomplete lines are
+ * ignored so the helper is usable for live highlighting on a partial board.
+ */
+function duplicateIndices(lines: (0 | 1 | null)[][], size: number): number[] {
+  const byKey = new Map<string, number[]>();
+  lines.forEach((line, i) => {
+    // Only complete lines take part: exactly `size` cells, every one 0 or 1.
+    if (line.length !== size || line.some((v) => v !== 0 && v !== 1)) return;
+    const key = line.join("");
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(i);
+    else byKey.set(key, [i]);
+  });
+  const out: number[] = [];
+  for (const bucket of byKey.values()) {
+    if (bucket.length > 1) out.push(...bucket);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/**
+ * Rows and columns that violate the "every row / column is unique" rule:
+ * the indices of every complete row that equals another complete row, and
+ * of every complete column that equals another complete column.
+ * Used for win detection and for the component's live violation highlight.
+ */
+export function findDuplicateLines(
+  arr: (0 | 1 | null)[],
+  size: number
+): { rows: number[]; cols: number[] } {
+  const rows = duplicateIndices(Array.from({ length: size }, (_, r) => getRow(arr, size, r)), size);
+  const cols = duplicateIndices(Array.from({ length: size }, (_, c) => getCol(arr, size, c)), size);
+  return { rows, cols };
+}
+
+/** True when no two complete rows and no two complete columns are identical. */
+export function linesUnique(arr: (0 | 1 | null)[], size: number): boolean {
+  const { rows, cols } = findDuplicateLines(arr, size);
+  return rows.length === 0 && cols.length === 0;
+}
+
+/**
+ * Validate a complete board against every rule the player is told:
+ *   - every row and every column satisfies `validateLine`
+ *     (fully filled, balanced, no three in a row),
+ *   - no two rows are identical and no two columns are identical.
  *
- * Returns true iff the board is a fully valid Binario solution.
+ * Returns true iff the board is a fully valid Binario solution.  Any grid
+ * that obeys the rules is accepted — it need not equal the stored solution.
  */
 export function validateAll(arr: (0 | 1 | null)[], size: number): boolean {
   for (let r = 0; r < size; r++) {
-    const row = arr.slice(r * size, r * size + size) as (0 | 1 | null)[];
-    if (!validateLine(row)) return false;
+    if (!validateLine(getRow(arr, size, r))) return false;
   }
   for (let c = 0; c < size; c++) {
-    const col: (0 | 1 | null)[] = [];
-    for (let r = 0; r < size; r++) col.push(arr[r * size + c]);
-    if (!validateLine(col)) return false;
+    if (!validateLine(getCol(arr, size, c))) return false;
   }
-  return true;
+  return linesUnique(arr, size);
 }
 
 /**
@@ -112,16 +166,13 @@ export function checkWinCondition(cells: (0 | 1 | null)[], size: number): boolea
 export function generateSolution(size: number, rng: Rng): Grid {
   const grid: (0 | 1 | -1)[] = new Array(size * size).fill(-1);
 
+  // Cells are filled in index order, so when cell (r, c) is being decided every
+  // cell to its right in the row and below it in the column is still -1.  The
+  // "no three in a row" rule therefore only needs to look backwards (left / up).
   function rowOk(g: (0 | 1 | -1)[], r: number, c: number, v: 0 | 1): boolean {
     const base = r * size;
     // no three consecutive
     if (c >= 2 && g[base + c - 1] === v && g[base + c - 2] === v) return false;
-    // Cells at c+1 and c+2 are always -1 (unfilled) during left-to-right backtracking;
-    // the lookahead checks below are defensive and can never be triggered.
-    /* v8 ignore start */
-    if (c >= 1 && c + 1 < size && g[base + c - 1] === v && g[base + c + 1] === v) return false;
-    if (c + 2 < size && g[base + c + 1] === v && g[base + c + 2] === v) return false;
-    /* v8 ignore stop */
     // count constraint
     const halfSize = size / 2;
     const count = g.slice(base, base + size).filter((x) => x === v).length;
@@ -133,12 +184,6 @@ export function generateSolution(size: number, rng: Rng): Grid {
     const halfSize = size / 2;
     // no three consecutive
     if (r >= 2 && g[(r - 1) * size + c] === v && g[(r - 2) * size + c] === v) return false;
-    // Cells at r+1 and r+2 are always -1 (unfilled) during top-to-bottom backtracking;
-    // the lookahead checks below are defensive and can never be triggered.
-    /* v8 ignore start */
-    if (r >= 1 && r + 1 < size && g[(r - 1) * size + c] === v && g[(r + 1) * size + c] === v) return false;
-    if (r + 2 < size && g[(r + 1) * size + c] === v && g[(r + 2) * size + c] === v) return false;
-    /* v8 ignore stop */
     // count
     let count = 0;
     for (let i = 0; i < size; i++) if (g[i * size + c] === v) count++;
@@ -157,12 +202,11 @@ export function generateSolution(size: number, rng: Rng): Grid {
   }
 
   function colsUnique(g: (0 | 1 | -1)[], c: number, r: number): boolean {
-    // only check when the column is fully filled (r === size - 1)
+    // Only check once the column is fully filled (r === size - 1); every cell
+    // above (r, c) was filled earlier by the index-order backtracking.
     if (r < size - 1) return true;
     const col: (0 | 1 | -1)[] = [];
     for (let i = 0; i <= r; i++) col.push(g[i * size + c]);
-    // When r===size-1 all column cells are filled (0 or 1) by top-to-bottom backtracking; -1 is never present.
-    /* v8 ignore start */ if (col.includes(-1)) return true; /* v8 ignore stop */
     for (let pc = 0; pc < c; pc++) {
       const prev: (0 | 1 | -1)[] = [];
       for (let i = 0; i < size; i++) prev.push(g[i * size + pc]);
