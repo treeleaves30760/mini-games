@@ -489,3 +489,107 @@ export function generateFunctionRunnerPuzzle(rng: Rng, difficultyKey = "normal")
   }
   throw new Error(`function runner: no ${difficulty.key} puzzle after ${PUZZLE_ATTEMPTS} attempts`);
 }
+
+/* ---------------------------------------------------------------------------
+   Hot-seat PVP
+   --------------------------------------------------------------------------- */
+
+export interface PvpUnit extends Point {
+  id: string;
+  owner: 1 | 2;
+  alive: boolean;
+}
+
+export interface PvpShot {
+  player: 1 | 2;
+  unitId: string;
+  result: ShotResult;
+}
+
+export interface PvpMatch {
+  board: Board;
+  units: PvpUnit[];
+  shapes: ObstacleShape[];
+  obstacles: Set<number>;
+  turn: 1 | 2;
+  winner: 0 | 1 | 2;
+  shots: PvpShot[];
+}
+
+export type PvpFire = { ok: true; match: PvpMatch; result: ShotResult } | FireError;
+
+export const PVP_UNITS_PER_SIDE = 3;
+export const PVP_OBSTACLES = 5;
+const PVP_ZONES: Record<1 | 2, [number, number]> = { 1: [-9, -6], 2: [6, 9] };
+const PVP_UNIT_Y = 6;
+const PVP_UNIT_SPACING = 2;
+const PVP_UNIT_CLEARANCE = 1.5;
+const PVP_OBSTACLE_X = 4;
+const UNIT_ATTEMPTS = 200;
+
+/** Player one shoots to the right, player two to the left: "+x" always points at the opponent. */
+export function pvpDirection(owner: 1 | 2): 1 | -1 {
+  return owner === 1 ? 1 : -1;
+}
+
+export function pvpAlive(match: PvpMatch, owner: 1 | 2): PvpUnit[] {
+  return match.units.filter((u) => u.owner === owner && u.alive);
+}
+
+/** The owner's next living unit after `afterId` in list order (wrapping), or null when none is left. */
+export function nextPvpUnit(match: PvpMatch, owner: 1 | 2, afterId: string | null): PvpUnit | null {
+  const own = match.units.filter((u) => u.owner === owner);
+  const start = afterId ? own.findIndex((u) => u.id === afterId) : -1;
+  for (let k = 1; k <= own.length; k++) {
+    const unit = own[(start + k) % own.length];
+    if (unit.alive) return unit;
+  }
+  return null;
+}
+
+export function generatePvpMatch(rng: Rng): PvpMatch {
+  const board = PVP_BOARD;
+  for (let attempt = 0; attempt < PUZZLE_ATTEMPTS; attempt++) {
+    const units: PvpUnit[] = [];
+    for (const owner of [1, 2] as const) {
+      for (let n = 1; n <= PVP_UNITS_PER_SIDE; n++) {
+        let unit: PvpUnit | null = null;
+        for (let tries = 0; tries < UNIT_ATTEMPTS && !unit; tries++) {
+          const candidate: PvpUnit = { id: `p${owner}-${n}`, owner, x: rng.int(PVP_ZONES[owner][0], PVP_ZONES[owner][1]), y: rng.int(-PVP_UNIT_Y, PVP_UNIT_Y), alive: true };
+          if (farEnough(candidate, units, PVP_UNIT_SPACING)) unit = candidate;
+        }
+        if (unit) units.push(unit);
+      }
+    }
+    if (units.length !== 2 * PVP_UNITS_PER_SIDE) continue;
+    const blocked = new Set<number>();
+    for (const u of units) markWithin(board, blocked, u, u, PVP_UNIT_CLEARANCE);
+    const obstacles = placeObstacles(rng, board, PVP_OBSTACLES, blocked, -PVP_OBSTACLE_X, PVP_OBSTACLE_X);
+    if (!obstacles) continue;
+    return { board, units, shapes: obstacles.shapes, obstacles: new Set(obstacles.cells), turn: 1, winner: 0, shots: [] };
+  }
+  throw new Error(`function runner: no PVP map after ${PUZZLE_ATTEMPTS} attempts`);
+}
+
+export function firePvp(match: PvpMatch, unitId: string, expression: string): PvpFire {
+  if (match.winner) return { ok: false, error: "對局已經結束", position: null };
+  const unit = match.units.find((u) => u.id === unitId);
+  if (!unit || unit.owner !== match.turn) return { ok: false, error: "請選自己的單位當出發點", position: null };
+  if (!unit.alive) return { ok: false, error: "這個單位已經被消滅", position: null };
+  const prepared = prepareShot(expression);
+  if (!prepared.ok) return prepared;
+  const enemy: 1 | 2 = match.turn === 1 ? 2 : 1;
+  const targets: Target[] = pvpAlive(match, enemy).map((u) => ({ id: u.id, x: u.x, y: u.y }));
+  const result = simulateShot(match.board, match.obstacles, targets, { x: unit.x, y: unit.y, dir: pvpDirection(unit.owner) }, prepared.f);
+  const units = match.units.map((u) => (result.hits.includes(u.id) ? { ...u, alive: false } : u));
+  const enemyLeft = units.some((u) => u.owner === enemy && u.alive);
+  const next: PvpMatch = {
+    ...match,
+    units,
+    obstacles: without(match.obstacles, result.cleared),
+    turn: enemy,
+    winner: enemyLeft ? 0 : match.turn,
+    shots: [...match.shots, { player: match.turn, unitId, result }],
+  };
+  return { ok: true, match: next, result };
+}

@@ -5,6 +5,8 @@ import {
   F0_UNDEFINED_ERROR,
   FUNCTION_RUNNER_DIFFICULTIES,
   PVP_BOARD,
+  PVP_OBSTACLES,
+  PVP_UNITS_PER_SIDE,
   SOLO_BOARD,
   SOLO_SHOOTER,
   TARGET_RADIUS,
@@ -15,14 +17,19 @@ import {
   craterCells,
   createSoloGame,
   distancePointToSegment,
+  firePvp,
   fireSolo,
   generateFunctionRunnerPuzzle,
+  generatePvpMatch,
   getFunctionRunnerDifficulty,
+  nextPvpUnit,
+  pvpAlive,
+  pvpDirection,
   rasterize,
   simulateShot,
   soloStatus,
 } from "~/games/function-runner";
-import type { Board, FunctionRunnerDifficulty, FunctionRunnerPuzzle, Target } from "~/games/function-runner";
+import type { Board, FunctionRunnerDifficulty, FunctionRunnerPuzzle, PvpMatch, Target } from "~/games/function-runner";
 
 const board: Board = SOLO_BOARD;
 
@@ -376,5 +383,130 @@ describe("puzzle generator", () => {
       }
     }
     for (const count of Object.values(seen)) expect(count).toBeGreaterThan(20);
+  });
+});
+
+describe("pvp match", () => {
+  function handMatch(units: [number, number, number][], obstacles: Set<number> = new Set()): PvpMatch {
+    return {
+      board: PVP_BOARD,
+      units: units.map(([owner, x, y], i) => ({ id: `p${owner}-${i + 1}`, owner: owner as 1 | 2, x, y, alive: true })),
+      shapes: [],
+      obstacles,
+      turn: 1,
+      winner: 0,
+      shots: [],
+    };
+  }
+
+  it("generates legal maps: three units a side in their zones, spaced out, five obstacles clear of every unit", () => {
+    const issues: string[] = [];
+    for (const seed of SEEDS.slice(0, 200)) {
+      const match = generatePvpMatch(makeRng(seed));
+      if (match.turn !== 1 || match.winner !== 0 || match.shots.length !== 0) issues.push(`${seed}: bad initial state`);
+      if (match.units.length !== 2 * PVP_UNITS_PER_SIDE) issues.push(`${seed}: ${match.units.length} units`);
+      if (match.shapes.length !== PVP_OBSTACLES) issues.push(`${seed}: ${match.shapes.length} obstacles`);
+      match.units.forEach((u, i) => {
+        if (!u.alive || !Number.isInteger(u.x) || !Number.isInteger(u.y) || Math.abs(u.y) > 6) issues.push(`${seed}: bad unit ${JSON.stringify(u)}`);
+        if (u.owner === 1 && (u.x < -9 || u.x > -6)) issues.push(`${seed}: player one unit at x=${u.x}`);
+        if (u.owner === 2 && (u.x < 6 || u.x > 9)) issues.push(`${seed}: player two unit at x=${u.x}`);
+        for (const o of match.units.slice(i + 1)) if (Math.hypot(u.x - o.x, u.y - o.y) < 2) issues.push(`${seed}: units too close`);
+      });
+      if (pvpAlive(match, 1).length !== 3 || pvpAlive(match, 2).length !== 3) issues.push(`${seed}: alive counts`);
+      const cells = new Set<number>();
+      for (const shape of match.shapes) for (const c of rasterize(PVP_BOARD, shape)) cells.add(c);
+      if (cells.size !== match.obstacles.size || [...cells].some((c) => !match.obstacles.has(c))) issues.push(`${seed}: obstacle cells do not match shapes`);
+      for (const index of match.obstacles) {
+        const c = cellCenter(PVP_BOARD, index);
+        if (Math.abs(c.x) > 5.75) issues.push(`${seed}: obstacle outside the middle band at x=${c.x}`);
+        for (const u of match.units) if (Math.hypot(c.x - u.x, c.y - u.y) < 1.5) issues.push(`${seed}: obstacle crowds a unit`);
+      }
+    }
+    expect(issues).toEqual([]);
+    expect(generatePvpMatch(makeRng("same"))).toEqual(generatePvpMatch(makeRng("same")));
+  });
+
+  it("fires toward the opponent, kills what it passes, flips the turn and declares a winner", () => {
+    expect(pvpDirection(1)).toBe(1);
+    expect(pvpDirection(2)).toBe(-1);
+    let match = handMatch([
+      [1, -8, 0],
+      [2, 8, 0],
+      [2, 8, 3],
+    ]);
+    const first = firePvp(match, "p1-1", "0");
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.result.hits).toEqual(["p2-2"]);
+    expect(first.match.units.find((u) => u.id === "p2-2")!.alive).toBe(false);
+    expect(first.match.turn).toBe(2);
+    expect(first.match.winner).toBe(0);
+    expect(first.match.shots).toEqual([{ player: 1, unitId: "p1-1", result: first.result }]);
+    expect(match.units.every((u) => u.alive)).toBe(true);
+    match = first.match;
+
+    const second = firePvp(match, "p2-3", "0");
+    expect(second.ok && second.result.hits).toEqual([]);
+    expect(second.ok && second.result.path[second.result.path.length - 1].x).toBeCloseTo(-10, 6);
+    expect(second.ok && second.match.turn).toBe(1);
+    if (second.ok) match = second.match;
+
+    const third = firePvp(match, "p1-1", "3x/16");
+    expect(third.ok && third.result.hits).toEqual(["p2-3"]);
+    expect(third.ok && third.match.winner).toBe(1);
+    expect(third.ok && pvpAlive(third.match, 2)).toEqual([]);
+    if (third.ok) expect(firePvp(third.match, "p1-1", "0")).toEqual({ ok: false, error: "對局已經結束", position: null });
+  });
+
+  it("only lets the current player fire one of their own living units", () => {
+    const match = handMatch([
+      [1, -8, 0],
+      [1, -7, 4],
+      [2, 8, 0],
+    ]);
+    expect(firePvp(match, "p2-3", "0")).toEqual({ ok: false, error: "請選自己的單位當出發點", position: null });
+    expect(firePvp(match, "nope", "0")).toEqual({ ok: false, error: "請選自己的單位當出發點", position: null });
+    const dead = { ...match, units: match.units.map((u) => (u.id === "p1-2" ? { ...u, alive: false } : u)) };
+    expect(firePvp(dead, "p1-2", "0")).toEqual({ ok: false, error: "這個單位已經被消滅", position: null });
+    expect(firePvp(match, "p1-1", "2 +")).toEqual({ ok: false, error: "這裡少了數字或 x", position: 3 });
+    expect(firePvp(match, "p1-1", "ln(x)")).toEqual({ ok: false, error: F0_UNDEFINED_ERROR, position: null });
+  });
+
+  it("passes through friendly units and keeps craters between turns", () => {
+    const wallCells = new Set(rasterize(PVP_BOARD, { kind: "rect", cx: 0, cy: 0, w: 1, h: 6 }));
+    const match = handMatch(
+      [
+        [1, -8, 0],
+        [1, -6, 0],
+        [2, 8, 0],
+      ],
+      wallCells,
+    );
+    const fired = firePvp(match, "p1-1", "0");
+    expect(fired.ok).toBe(true);
+    if (!fired.ok) return;
+    expect(fired.result.hits).toEqual([]);
+    expect(fired.result.end).toBe("obstacle");
+    expect(fired.match.units.find((u) => u.id === "p1-2")!.alive).toBe(true);
+    expect(fired.match.obstacles.size).toBe(wallCells.size - fired.result.cleared.length);
+    expect(match.obstacles.size).toBe(wallCells.size);
+    const reply = firePvp(fired.match, "p2-3", "0");
+    expect(reply.ok && reply.match.obstacles.size).toBeLessThanOrEqual(fired.match.obstacles.size);
+  });
+
+  it("suggests the next living unit after the one that just fired", () => {
+    const match = handMatch([
+      [1, -8, 0],
+      [1, -7, 4],
+      [1, -6, -4],
+      [2, 8, 0],
+    ]);
+    expect(nextPvpUnit(match, 1, null)!.id).toBe("p1-1");
+    expect(nextPvpUnit(match, 1, "p1-1")!.id).toBe("p1-2");
+    expect(nextPvpUnit(match, 1, "p1-3")!.id).toBe("p1-1");
+    const dead = { ...match, units: match.units.map((u) => (u.id === "p1-2" ? { ...u, alive: false } : u)) };
+    expect(nextPvpUnit(dead, 1, "p1-1")!.id).toBe("p1-3");
+    const wiped = { ...match, units: match.units.map((u) => (u.owner === 2 ? { ...u, alive: false } : u)) };
+    expect(nextPvpUnit(wiped, 2, null)).toBeNull();
   });
 });
