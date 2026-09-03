@@ -326,6 +326,10 @@ const TARGET_MIN_X = 2;
 const TARGET_MAX_X = 19;
 const TARGET_MAX_Y = 7;
 const TARGET_SPACING = 1.5;
+/** Every hidden curve must carry a target at least this far out, so shots cross the board and obstacles matter. */
+const GROUP_MIN_REACH = 6;
+/** A multi-target group spreads over at least this many columns instead of stacking next to the shooter. */
+const GROUP_MIN_SPAN = 3;
 /** A hidden curve must stay this close to the middle until its last target, or the shot would leave the board early. */
 const PATH_Y_LIMIT = 7.5;
 const PATH_STEP = 0.05;
@@ -402,8 +406,9 @@ function drawHiddenCurve(rng: Rng, size: number, placed: readonly Point[]): Hidd
     }
     if (eligible.length < size) continue;
     const targets = rng.shuffle(eligible).slice(0, size).sort((a, b) => a.x - b.x);
-    if (!targets.every((t, i) => farEnough(t, [...placed, ...targets.slice(0, i)], TARGET_SPACING))) continue;
     const xMax = targets[targets.length - 1].x;
+    if (xMax < GROUP_MIN_REACH || (size > 1 && xMax - targets[0].x < GROUP_MIN_SPAN)) continue;
+    if (!targets.every((t, i) => farEnough(t, [...placed, ...targets.slice(0, i)], TARGET_SPACING))) continue;
     const path: Point[] = [];
     for (let i = 0, n = Math.round(xMax / PATH_STEP); i <= n; i++) path.push({ x: i * PATH_STEP, y: g(i * PATH_STEP) });
     if (path.some((p) => Math.abs(p.y) > PATH_Y_LIMIT)) continue;

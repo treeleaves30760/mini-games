@@ -288,6 +288,8 @@ function puzzleIssues(puzzle: FunctionRunnerPuzzle, difficulty: FunctionRunnerDi
   if (puzzle.shapes.length !== difficulty.obstacles) issues.push(`${puzzle.shapes.length} obstacles instead of ${difficulty.obstacles}`);
   const ids = new Set(puzzle.targets.map((t) => t.id));
   if (ids.size !== puzzle.targets.length) issues.push("duplicate target ids");
+  // every hidden curve carries a target at x >= 6, so at least one target per group sits out in the board
+  if (puzzle.targets.filter((t) => t.x >= 6).length < difficulty.groups.length) issues.push("targets huddle next to the shooter");
   puzzle.targets.forEach((t, i) => {
     if (!Number.isInteger(t.x) || !Number.isInteger(t.y)) issues.push(`non-integer target (${t.x}, ${t.y})`);
     if (t.x < 2 || t.x > 19 || Math.abs(t.y) > 7) issues.push(`target out of range (${t.x}, ${t.y})`);
