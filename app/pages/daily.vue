@@ -32,6 +32,12 @@ import FractionBalanceGame from "~/components/games/FractionBalanceGame.vue";
 import PrimeHunterGame from "~/components/games/PrimeHunterGame.vue";
 import CountdownGame from "~/components/games/CountdownGame.vue";
 import FunctionRunnerGame from "~/components/games/FunctionRunnerGame.vue";
+import FlowGame from "~/components/games/FlowGame.vue";
+import RushHourGame from "~/components/games/RushHourGame.vue";
+import WaterSortGame from "~/components/games/WaterSortGame.vue";
+import SkyscrapersGame from "~/components/games/SkyscrapersGame.vue";
+import RulloGame from "~/components/games/RulloGame.vue";
+import UntangleGame from "~/components/games/UntangleGame.vue";
 
 const COMPONENTS = {
   minesweeper: MinesweeperGame,
@@ -57,6 +63,12 @@ const COMPONENTS = {
   "prime-hunter": PrimeHunterGame,
   countdown: CountdownGame,
   "function-runner": FunctionRunnerGame,
+  flow: FlowGame,
+  "rush-hour": RushHourGame,
+  "water-sort": WaterSortGame,
+  skyscrapers: SkyscrapersGame,
+  rullo: RulloGame,
+  untangle: UntangleGame,
 };
 
 const { games } = useGames();

@@ -1,4 +1,5 @@
 <script setup>
+definePageMeta({ layout: false });
 useHead({ title: "等式迷宮 Equation Maze · 遊樂場" });
 </script>
 

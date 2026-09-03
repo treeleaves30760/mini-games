@@ -19,3 +19,6 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+
+# Claude Code worktrees
+.claude/worktrees/

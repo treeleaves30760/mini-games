@@ -4,11 +4,11 @@ A collection of browser mini-games in Traditional Chinese, built with **Vue 3 + 
 
 Live: https://treeleaves30760.github.io/mini-games/
 
-**44 games** plus a **Daily Challenge**, grouped on the home page:
+**50 games** plus a **Daily Challenge**, grouped on the home page:
 
 | Group | Games |
 | --- | --- |
-| 邏輯 Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents |
+| 邏輯 Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents, Flow, Rush Hour, Water Sort, Skyscrapers, Rullo, Untangle |
 | 棋類 Board (vs computer) | Gomoku (with Renju forbidden moves), Reversi, Chess, Shogi, Tic-Tac-Toe, Dots & Boxes |
 | 數學 Math | 2048, 15 Puzzle, Make 24, Mastermind, KenKen, Equation Maze, Fraction Balance, Prime Hunter, Countdown Numbers, Function Runner |
 | 文字 Word | Word Guess (5–8 letters, with meanings), Japanese Word Guess (hiragana, with meanings, examples and speech), Word Search |
@@ -43,6 +43,10 @@ Chess and Shogi share one search design (`app/games/chess.ts`, `app/games/shogi.
 A node budget and a wall clock bound every search; whichever runs out first stops it and the deepest completed iteration is played. The search runs in a **Web Worker** (`app/workers/`) so the board stays responsive; `useBoardAI` falls back to the main thread where workers are unavailable.
 
 Chess searches its own 0x88 board (verified against `chess.js` and published perft counts in `tests/games/chess.test.ts`) because generating moves through `chess.js` is too slow for deep search. Shogi keeps `tsshogi` as the rules authority.
+
+### Function Runner
+
+座標射擊 is a Graphwar-style shooter: you type `f(x)` and the curve `y = f(x) − f(0)` is fired from the origin, destroying every target it passes and stopping at the first obstacle, where it blasts a small crater. `app/utils/expression.ts` parses the input with a small recursive-descent parser (implicit multiplication, `^`, `sin`/`cos`/`tan`/`abs`/`sqrt`/`exp`/`ln`/`log`/`floor`, `pi`/`e`, capped at 400 characters) — no `eval`. Puzzles are generated from hidden solution curves (lines, parabolas, sine waves, V shapes with friendly coefficients) and obstacles are kept clear of them, so every round is solvable within its shot budget; the tests fire the hidden curves through the real simulation for hundreds of seeds and three years of Daily dates. 雙人 is a hot-seat mode on one device: each side has three units, turns alternate, and `+x` always points at the opponent.
 
 ## Design
 
@@ -98,7 +102,7 @@ pnpm preview       # preview the production build
 │   │   ├── index.vue              # home
 │   │   ├── daily.vue              # Daily Challenge
 │   │   └── games/                 # one route per game
-│   ├── utils/                     # rng.ts (seeded RNG), sudoku.ts (generator / solver)
+│   ├── utils/                     # rng.ts (seeded RNG), sudoku.ts (generator / solver), expression.ts (f(x) parser)
 │   └── workers/                   # chess-ai.ts / shogi-ai.ts
 ├── tests/                         # Vitest suites for app/games and app/utils
 ├── public/favicon.svg

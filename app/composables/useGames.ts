@@ -514,6 +514,150 @@ const GAMES: Game[] = [
       </svg>`,
   },
 
+  {
+    id: "flow",
+    title: "連線",
+    titleEn: "Flow",
+    desc: "同色相連，填滿全格",
+    accent: "#4fc3f7",
+    category: "邏輯",
+    type: "native",
+    to: "/games/flow",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g stroke="var(--text-faint)" stroke-width="1.2" opacity="0.5">
+          <path d="M14 14h92v92H14zM14 37h92M14 60h92M14 83h92M37 14v92M60 14v92M83 14v92"/>
+        </g>
+        <path d="M25.5 25.5 H71.5 V71.5 H94.5" stroke="var(--accent)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="25.5" cy="25.5" r="8" fill="var(--accent)"/>
+        <circle cx="94.5" cy="71.5" r="8" fill="var(--accent)"/>
+        <path d="M25.5 94.5 H48.5 V48.5" stroke="var(--text-dim)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="25.5" cy="94.5" r="8" fill="var(--text-dim)"/>
+        <circle cx="48.5" cy="48.5" r="8" fill="var(--text-dim)"/>
+      </svg>`,
+  },
+  {
+    id: "rush-hour",
+    title: "停車場",
+    titleEn: "Rush Hour",
+    desc: "挪開車輛，讓紅車離場",
+    accent: "#ef6b6b",
+    category: "邏輯",
+    type: "native",
+    to: "/games/rush-hour",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="12" y="12" width="96" height="96" rx="10" stroke="var(--text-faint)" stroke-width="2" opacity="0.6"/>
+        <path d="M108 44 V76" stroke="var(--ink-900)" stroke-width="4"/>
+        <rect x="18" y="18" width="14" height="44" rx="4" fill="var(--ink-500)"/>
+        <rect x="70" y="18" width="14" height="28" rx="4" fill="var(--ink-500)"/>
+        <rect x="86" y="18" width="14" height="60" rx="4" fill="var(--ink-500)"/>
+        <rect x="18" y="86" width="44" height="14" rx="4" fill="var(--ink-500)"/>
+        <rect x="54" y="66" width="14" height="34" rx="4" fill="var(--ink-500)"/>
+        <rect x="36" y="50" width="30" height="14" rx="4" fill="var(--accent)"/>
+        <path d="M102 57 h10 m-4 -4 l4 4 -4 4" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`,
+  },
+  {
+    id: "water-sort",
+    title: "倒水",
+    titleEn: "Water Sort",
+    desc: "把每種顏色倒進同一管",
+    accent: "#4ecdc4",
+    category: "邏輯",
+    type: "native",
+    to: "/games/water-sort",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g stroke="var(--text-faint)" stroke-width="2.5">
+          <path d="M22 22 v60 a12 12 0 0 0 24 0 V22"/>
+          <path d="M74 22 v60 a12 12 0 0 0 24 0 V22"/>
+        </g>
+        <path d="M25 66 v16 a9 9 0 0 0 18 0 V66z" fill="var(--accent)"/>
+        <path d="M25 50 h18 v16 H25z" fill="var(--text-dim)"/>
+        <path d="M25 34 h18 v16 H25z" fill="var(--accent)"/>
+        <path d="M77 66 v16 a9 9 0 0 0 18 0 V66z" fill="var(--text-dim)"/>
+        <path d="M77 50 h18 v16 H77z" fill="var(--text-dim)"/>
+        <path d="M52 40 c6 -4 12 -4 18 0" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M66 36 l5 4 -5 4" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`,
+  },
+  {
+    id: "skyscrapers",
+    title: "摩天樓",
+    titleEn: "Skyscrapers",
+    desc: "從邊上數得到幾棟樓",
+    accent: "#a78bfa",
+    category: "邏輯",
+    type: "native",
+    to: "/games/skyscrapers",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g fill="var(--text-faint)" font-family="'Space Mono', ui-monospace, monospace" font-size="13" font-weight="700" text-anchor="middle">
+          <text x="14" y="102">3</text><text x="42" y="22">2</text><text x="68" y="22">1</text><text x="94" y="22">2</text>
+        </g>
+        <rect x="30" y="76" width="22" height="30" rx="2" fill="var(--accent)" fill-opacity="0.45"/>
+        <rect x="56" y="34" width="22" height="72" rx="2" fill="var(--accent)"/>
+        <rect x="82" y="56" width="22" height="50" rx="2" fill="var(--accent)" fill-opacity="0.7"/>
+        <g stroke="var(--ink-900)" stroke-width="2" opacity="0.6">
+          <path d="M60 44h14M60 54h14M60 64h14M60 74h14M60 84h14M60 94h14M86 66h14M86 76h14M86 86h14M86 96h14M34 86h14M34 96h14"/>
+        </g>
+        <path d="M24 106 H108" stroke="var(--text-faint)" stroke-width="2"/>
+      </svg>`,
+  },
+  {
+    id: "rullo",
+    title: "數字開關",
+    titleEn: "Rullo",
+    desc: "關掉數字，湊出目標和",
+    accent: "#e8a33d",
+    category: "邏輯",
+    type: "native",
+    to: "/games/rullo",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g font-family="'Space Mono', ui-monospace, monospace" font-size="15" font-weight="700" text-anchor="middle">
+          <rect x="14" y="14" width="24" height="24" rx="5" fill="var(--ink-600)"/><text x="26" y="31" fill="var(--text)">4</text>
+          <rect x="42" y="14" width="24" height="24" rx="5" fill="var(--ink-800)"/><text x="54" y="31" fill="var(--text-faint)">7</text>
+          <rect x="70" y="14" width="24" height="24" rx="5" fill="var(--ink-600)"/><text x="82" y="31" fill="var(--text)">2</text>
+          <rect x="14" y="42" width="24" height="24" rx="5" fill="var(--ink-800)"/><text x="26" y="59" fill="var(--text-faint)">5</text>
+          <rect x="42" y="42" width="24" height="24" rx="5" fill="var(--ink-600)"/><text x="54" y="59" fill="var(--text)">3</text>
+          <rect x="70" y="42" width="24" height="24" rx="5" fill="var(--ink-600)"/><text x="82" y="59" fill="var(--text)">9</text>
+          <rect x="14" y="70" width="24" height="24" rx="5" fill="var(--ink-600)"/><text x="26" y="87" fill="var(--text)">6</text>
+          <rect x="42" y="70" width="24" height="24" rx="5" fill="var(--ink-600)"/><text x="54" y="87" fill="var(--text)">1</text>
+          <rect x="70" y="70" width="24" height="24" rx="5" fill="var(--ink-800)"/><text x="82" y="87" fill="var(--text-faint)">8</text>
+          <text x="106" y="31" fill="var(--accent)">6</text><text x="106" y="59" fill="var(--accent)">12</text><text x="106" y="87" fill="var(--accent)">7</text>
+          <text x="26" y="112" fill="var(--accent)">10</text><text x="54" y="112" fill="var(--accent)">4</text><text x="82" y="112" fill="var(--accent)">11</text>
+        </g>
+      </svg>`,
+  },
+  {
+    id: "untangle",
+    title: "解結",
+    titleEn: "Untangle",
+    desc: "拖動點，讓線不再交叉",
+    accent: "#8fd3a0",
+    category: "邏輯",
+    type: "native",
+    to: "/games/untangle",
+    available: true,
+    icon: `
+      <svg viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <g stroke="var(--text-faint)" stroke-width="2.5" stroke-linecap="round">
+          <path d="M24 30 L96 90 M96 30 L24 90 M24 30 L60 18 L96 30 M24 90 L60 104 L96 90 M60 18 L60 104"/>
+        </g>
+        <path d="M24 30 L96 90 M96 30 L24 90" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+        <g fill="var(--ink-600)" stroke="var(--accent)" stroke-width="3">
+          <circle cx="24" cy="30" r="7"/><circle cx="96" cy="30" r="7"/><circle cx="24" cy="90" r="7"/><circle cx="96" cy="90" r="7"/>
+          <circle cx="60" cy="18" r="7"/><circle cx="60" cy="104" r="7"/>
+        </g>
+      </svg>`,
+  },
   /* ===== Board games vs AI ===== */
   {
     id: "gomoku",
@@ -859,7 +1003,7 @@ const GAMES: Game[] = [
     id: "function-runner",
     title: "座標射擊",
     titleEn: "Function Runner",
-    desc: "調係數命中目標點",
+    desc: "寫函式擊中目標點",
     accent: "#fb7185",
     category: "數學",
     type: "native",
