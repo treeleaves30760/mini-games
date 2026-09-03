@@ -12,6 +12,7 @@
    Obstacles live on a grid of CELL-sized squares indexed row * cols + col.
    ========================================================================= */
 
+import type { Rng } from "~/utils/rng";
 import { compileExpression } from "~/utils/expression";
 
 export interface Point {
@@ -294,4 +295,197 @@ export function fireSolo(game: SoloGame, expression: string): SoloFire {
     shots: [...game.shots, result],
   };
   return { ok: true, game: next, result };
+}
+
+/* ---------------------------------------------------------------------------
+   Difficulties and the generator
+   --------------------------------------------------------------------------- */
+
+export interface FunctionRunnerDifficulty {
+  key: FunctionRunnerDifficultyKey;
+  label: string;
+  targets: number;
+  shots: number;
+  obstacles: number;
+  /** Targets per hidden curve, largest group first. */
+  groups: number[];
+}
+
+export const FUNCTION_RUNNER_DIFFICULTIES: FunctionRunnerDifficulty[] = [
+  { key: "easy", label: "簡單", targets: 3, shots: 3, obstacles: 0, groups: [1, 1, 1] },
+  { key: "normal", label: "普通", targets: 5, shots: 4, obstacles: 2, groups: [2, 2, 1] },
+  { key: "hard", label: "困難", targets: 7, shots: 4, obstacles: 4, groups: [3, 2, 2] },
+  { key: "expert", label: "專家", targets: 10, shots: 5, obstacles: 6, groups: [3, 3, 2, 2] },
+];
+
+export function getFunctionRunnerDifficulty(key: string): FunctionRunnerDifficulty {
+  return FUNCTION_RUNNER_DIFFICULTIES.find((d) => d.key === key) ?? FUNCTION_RUNNER_DIFFICULTIES[1];
+}
+
+const TARGET_MIN_X = 2;
+const TARGET_MAX_X = 19;
+const TARGET_MAX_Y = 7;
+const TARGET_SPACING = 1.5;
+/** A hidden curve must stay this close to the middle until its last target, or the shot would leave the board early. */
+const PATH_Y_LIMIT = 7.5;
+const PATH_STEP = 0.05;
+const OBSTACLE_PATH_MARGIN = 0.75;
+const OBSTACLE_TARGET_MARGIN = 1;
+const SHOOTER_CLEARANCE = 2;
+const GROUP_ATTEMPTS = 200;
+const OBSTACLE_ATTEMPTS = 200;
+const PUZZLE_ATTEMPTS = 50;
+
+type Family = (rng: Rng) => string;
+
+function linearTerm(b: number): string {
+  if (b === 0) return "";
+  const size = Math.abs(b) === 1 ? "x" : `${Math.abs(b)}x`;
+  return ` ${b < 0 ? "-" : "+"} ${size}`;
+}
+
+/** m·x with m = p/q, |m| ≤ 2: "2x", "-x/2", "2x/3". */
+const lineFamily: Family = (rng) => {
+  const q = rng.pick([1, 2, 3]);
+  const p = rng.pick([-3, -2, -1, 1, 2, 3].filter((v) => Math.abs(v / q) <= 2));
+  const head = p === 1 ? "x" : p === -1 ? "-x" : `${p}x`;
+  return q === 1 ? head : `${head}/${q}`;
+};
+
+/** a·x² + b·x with a ∈ {±¼, ±½, ±1}, b ∈ [−3, 3]: "x^2/4 - 3x", "-x^2 + 2x". */
+const quadraticFamily: Family = (rng) => {
+  const den = rng.pick([1, 2, 4]);
+  const head = `${rng.bool() ? "-" : ""}${den === 1 ? "x^2" : `x^2/${den}`}`;
+  return head + linearTerm(rng.int(-3, 3));
+};
+
+/** A·sin(2πx/p) with p ∈ {4, 8, 12}: "3sin(pi x/2)", "4sin(pi x/4)", "2sin(pi x/6)". */
+const sineFamily: Family = (rng) => `${rng.int(2, 6)}sin(pi x/${rng.pick([2, 4, 6])})`;
+
+/** a·|x − c| with a ∈ {±½, ±1}, c ∈ [3, 10]: "abs(x-5)", "-abs(x-6)/2". */
+const absFamily: Family = (rng) => `${rng.bool() ? "-" : ""}abs(x-${rng.int(3, 10)})${rng.bool() ? "/2" : ""}`;
+
+const FAMILIES_BY_GROUP_SIZE: Record<number, Family[]> = {
+  1: [lineFamily],
+  2: [lineFamily, quadraticFamily],
+  3: [lineFamily, quadraticFamily, sineFamily, absFamily],
+};
+
+interface HiddenCurve {
+  expression: string;
+  targets: Point[];
+  /** The curve as the shot will draw it, from the shooter to the last target. */
+  path: Point[];
+}
+
+/** The curve as drawn: y = f(x) − f(0). Our own strings always compile. */
+function shiftedCurve(expression: string): (x: number) => number {
+  const compiled = compileExpression(expression);
+  if (!compiled.ok) throw new Error(`function runner: bad hidden curve ${expression}: ${compiled.error}`);
+  const f0 = compiled.f(0);
+  return (x) => compiled.f(x) - f0;
+}
+
+function farEnough(p: Point, others: readonly Point[], spacing: number): boolean {
+  return others.every((o) => Math.hypot(p.x - o.x, p.y - o.y) >= spacing);
+}
+
+function drawHiddenCurve(rng: Rng, size: number, placed: readonly Point[]): HiddenCurve | null {
+  for (let attempt = 0; attempt < GROUP_ATTEMPTS; attempt++) {
+    const expression = rng.pick(FAMILIES_BY_GROUP_SIZE[size])(rng);
+    const g = shiftedCurve(expression);
+    const eligible: Point[] = [];
+    for (let x = TARGET_MIN_X; x <= TARGET_MAX_X; x++) {
+      const y = g(x);
+      const rounded = Math.round(y);
+      if (Math.abs(y - rounded) < 1e-9 && Math.abs(rounded) <= TARGET_MAX_Y) eligible.push({ x, y: rounded });
+    }
+    if (eligible.length < size) continue;
+    const targets = rng.shuffle(eligible).slice(0, size).sort((a, b) => a.x - b.x);
+    if (!targets.every((t, i) => farEnough(t, [...placed, ...targets.slice(0, i)], TARGET_SPACING))) continue;
+    const xMax = targets[targets.length - 1].x;
+    const path: Point[] = [];
+    for (let i = 0, n = Math.round(xMax / PATH_STEP); i <= n; i++) path.push({ x: i * PATH_STEP, y: g(i * PATH_STEP) });
+    if (path.some((p) => Math.abs(p.y) > PATH_Y_LIMIT)) continue;
+    return { expression, targets, path };
+  }
+  return null;
+}
+
+/** Mark every cell whose centre is closer than `radius` to the segment a–b (a point when a = b). */
+function markWithin(board: Board, blocked: Set<number>, a: Point, b: Point, radius: number): void {
+  forCellsNear(board, Math.min(a.x, b.x), Math.max(a.x, b.x), Math.min(a.y, b.y), Math.max(a.y, b.y), radius, (index, c) => {
+    if (distancePointToSegment(c, a, b) < radius) blocked.add(index);
+  });
+}
+
+function randomShape(rng: Rng, xMin: number, xMax: number): ObstacleShape {
+  const cx = rng.float(xMin, xMax);
+  const cy = rng.float(-7, 7);
+  return rng.bool() ? { kind: "circle", cx, cy, r: rng.float(0.8, 1.5) } : { kind: "rect", cx, cy, w: 1, h: rng.float(2, 4) };
+}
+
+/** Drop `count` shapes whose cells avoid `blocked` and each other; null when one cannot be placed. */
+function placeObstacles(rng: Rng, board: Board, count: number, blocked: ReadonlySet<number>, xMin: number, xMax: number): { shapes: ObstacleShape[]; cells: number[] } | null {
+  const shapes: ObstacleShape[] = [];
+  const occupied = new Set<number>();
+  for (let n = 0; n < count; n++) {
+    let placed = false;
+    for (let attempt = 0; attempt < OBSTACLE_ATTEMPTS && !placed; attempt++) {
+      const shape = randomShape(rng, xMin, xMax);
+      const cells = rasterize(board, shape);
+      if (cells.length === 0 || cells.some((c) => occupied.has(c) || blocked.has(c))) continue;
+      shapes.push(shape);
+      for (const c of cells) occupied.add(c);
+      placed = true;
+    }
+    if (!placed) return null;
+  }
+  return { shapes, cells: [...occupied].sort((a, b) => a - b) };
+}
+
+function tryGeneratePuzzle(rng: Rng, difficulty: FunctionRunnerDifficulty): FunctionRunnerPuzzle | null {
+  const board = SOLO_BOARD;
+  const shooter = SOLO_SHOOTER;
+  const curves: HiddenCurve[] = [];
+  const placed: Point[] = [];
+  for (const size of difficulty.groups) {
+    const curve = drawHiddenCurve(rng, size, placed);
+    if (!curve) return null;
+    curves.push(curve);
+    placed.push(...curve.targets);
+  }
+  const targets: Target[] = placed.map((p, i) => ({ id: `t${i + 1}`, x: p.x, y: p.y }));
+  const blocked = new Set<number>();
+  markWithin(board, blocked, shooter, shooter, SHOOTER_CLEARANCE);
+  for (const t of targets) markWithin(board, blocked, t, t, OBSTACLE_TARGET_MARGIN);
+  for (const curve of curves) {
+    for (let i = 1; i < curve.path.length; i++) markWithin(board, blocked, curve.path[i - 1], curve.path[i], OBSTACLE_PATH_MARGIN);
+  }
+  const obstacles = placeObstacles(rng, board, difficulty.obstacles, blocked, 3, 18);
+  if (!obstacles) return null;
+  return {
+    difficulty: difficulty.key,
+    board,
+    shooter,
+    shots: difficulty.shots,
+    targets,
+    shapes: obstacles.shapes,
+    obstacles: obstacles.cells,
+    solution: curves.map((c) => c.expression),
+  };
+}
+
+/**
+ * Build a round from its answer: draw one hidden curve per target group, put
+ * the targets on it, then keep obstacles clear of every curve up to its last
+ * target. Firing the curves in order therefore always clears the board.
+ */
+export function generateFunctionRunnerPuzzle(rng: Rng, difficultyKey = "normal"): FunctionRunnerPuzzle {
+  const difficulty = getFunctionRunnerDifficulty(difficultyKey);
+  for (let attempt = 0; attempt < PUZZLE_ATTEMPTS; attempt++) {
+    const puzzle = tryGeneratePuzzle(rng, difficulty);
+    if (puzzle) return puzzle;
+  }
+  throw new Error(`function runner: no ${difficulty.key} puzzle after ${PUZZLE_ATTEMPTS} attempts`);
 }

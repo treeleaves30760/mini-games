@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { makeRng } from "~/utils/rng";
 import {
   CRATER_RADIUS,
   F0_UNDEFINED_ERROR,
+  FUNCTION_RUNNER_DIFFICULTIES,
   PVP_BOARD,
   SOLO_BOARD,
   SOLO_SHOOTER,
@@ -14,11 +16,13 @@ import {
   createSoloGame,
   distancePointToSegment,
   fireSolo,
+  generateFunctionRunnerPuzzle,
+  getFunctionRunnerDifficulty,
   rasterize,
   simulateShot,
   soloStatus,
 } from "~/games/function-runner";
-import type { Board, FunctionRunnerPuzzle, Target } from "~/games/function-runner";
+import type { Board, FunctionRunnerDifficulty, FunctionRunnerPuzzle, Target } from "~/games/function-runner";
 
 const board: Board = SOLO_BOARD;
 
@@ -262,5 +266,115 @@ describe("solo game", () => {
     const flat = fireSolo(game, "0");
     const lifted = fireSolo(game, "7");
     expect(flat.ok && lifted.ok && JSON.stringify(flat.result) === JSON.stringify(lifted.result)).toBe(true);
+  });
+});
+
+/* Independent reading of the spec's placement rules, kept separate from the generator on purpose. */
+function puzzleIssues(puzzle: FunctionRunnerPuzzle, difficulty: FunctionRunnerDifficulty): string[] {
+  const issues: string[] = [];
+  if (puzzle.difficulty !== difficulty.key) issues.push("difficulty key mismatch");
+  if (JSON.stringify(puzzle.board) !== JSON.stringify(SOLO_BOARD)) issues.push("board is not the solo board");
+  if (JSON.stringify(puzzle.shooter) !== JSON.stringify(SOLO_SHOOTER)) issues.push("shooter moved");
+  if (puzzle.shots !== difficulty.shots) issues.push(`${puzzle.shots} shots instead of ${difficulty.shots}`);
+  if (puzzle.targets.length !== difficulty.targets) issues.push(`${puzzle.targets.length} targets instead of ${difficulty.targets}`);
+  if (puzzle.solution.length !== difficulty.groups.length) issues.push(`${puzzle.solution.length} hidden curves instead of ${difficulty.groups.length}`);
+  if (puzzle.shapes.length !== difficulty.obstacles) issues.push(`${puzzle.shapes.length} obstacles instead of ${difficulty.obstacles}`);
+  const ids = new Set(puzzle.targets.map((t) => t.id));
+  if (ids.size !== puzzle.targets.length) issues.push("duplicate target ids");
+  puzzle.targets.forEach((t, i) => {
+    if (!Number.isInteger(t.x) || !Number.isInteger(t.y)) issues.push(`non-integer target (${t.x}, ${t.y})`);
+    if (t.x < 2 || t.x > 19 || Math.abs(t.y) > 7) issues.push(`target out of range (${t.x}, ${t.y})`);
+    for (const other of puzzle.targets.slice(i + 1)) {
+      if (Math.hypot(t.x - other.x, t.y - other.y) < 1.5) issues.push(`targets too close (${t.x}, ${t.y}) (${other.x}, ${other.y})`);
+    }
+  });
+  const fromShapes = new Set<number>();
+  for (const shape of puzzle.shapes) for (const cell of rasterize(SOLO_BOARD, shape)) fromShapes.add(cell);
+  if ([...fromShapes].sort((a, b) => a - b).join() !== puzzle.obstacles.join()) issues.push("obstacle cells do not match the shapes");
+  for (let i = 1; i < puzzle.obstacles.length; i++) if (puzzle.obstacles[i - 1] >= puzzle.obstacles[i]) issues.push("obstacle cells not ascending/unique");
+  for (const index of puzzle.obstacles) {
+    const c = cellCenter(SOLO_BOARD, index);
+    if (Math.hypot(c.x, c.y) < 2) issues.push("obstacle crowds the shooter");
+    for (const t of puzzle.targets) if (Math.hypot(c.x - t.x, c.y - t.y) < 1) issues.push(`obstacle crowds target (${t.x}, ${t.y})`);
+  }
+  return issues;
+}
+
+/** Fire the hidden curves in order through the real pipeline, stopping early if one curve happens to clear the rest. */
+function playSolution(puzzle: FunctionRunnerPuzzle): { remaining: number; used: number } {
+  let game = createSoloGame(puzzle);
+  for (const expression of puzzle.solution) {
+    if (game.alive.size === 0) break;
+    const fired = fireSolo(game, expression);
+    if (!fired.ok) throw new Error(`${expression}: ${fired.error}`);
+    game = fired.game;
+  }
+  return { remaining: game.alive.size, used: game.shots.length };
+}
+
+const SEEDS: (string | number)[] = [...Array.from({ length: 300 }, (_, i) => `function-runner-${i}`), ...Array.from({ length: 100 }, (_, i) => i * 7919)];
+
+const DAILY_DATES = Array.from({ length: 3 * 366 }, (_, i) => {
+  const d = new Date(2025, 0, 1 + i);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+});
+
+describe("puzzle generator", () => {
+  it("exposes the spec's difficulty table", () => {
+    expect(FUNCTION_RUNNER_DIFFICULTIES.map((d) => [d.key, d.label, d.targets, d.shots, d.obstacles, d.groups])).toEqual([
+      ["easy", "簡單", 3, 3, 0, [1, 1, 1]],
+      ["normal", "普通", 5, 4, 2, [2, 2, 1]],
+      ["hard", "困難", 7, 4, 4, [3, 2, 2]],
+      ["expert", "專家", 10, 5, 6, [3, 3, 2, 2]],
+    ]);
+    for (const d of FUNCTION_RUNNER_DIFFICULTIES) expect(d.groups.reduce((a, b) => a + b, 0)).toBe(d.targets);
+    expect(getFunctionRunnerDifficulty("nope").key).toBe("normal");
+    expect(generateFunctionRunnerPuzzle(makeRng("default")).difficulty).toBe("normal");
+  });
+
+  it("is deterministic per seed and varies across seeds", () => {
+    for (const d of FUNCTION_RUNNER_DIFFICULTIES) {
+      expect(generateFunctionRunnerPuzzle(makeRng("same"), d.key)).toEqual(generateFunctionRunnerPuzzle(makeRng("same"), d.key));
+      const distinct = new Set(SEEDS.slice(0, 60).map((seed) => JSON.stringify(generateFunctionRunnerPuzzle(makeRng(seed), d.key).targets)));
+      expect(distinct.size).toBeGreaterThanOrEqual(55);
+    }
+  });
+
+  it("every round at every difficulty is well-formed and cleared by its hidden curves within the shot budget", () => {
+    const issues: string[] = [];
+    for (const d of FUNCTION_RUNNER_DIFFICULTIES) {
+      for (const seed of SEEDS) {
+        const puzzle = generateFunctionRunnerPuzzle(makeRng(seed), d.key);
+        for (const issue of puzzleIssues(puzzle, d)) issues.push(`${d.key}/${seed}: ${issue}`);
+        const played = playSolution(puzzle);
+        if (played.remaining !== 0) issues.push(`${d.key}/${seed}: ${played.remaining} targets survive the solution ${JSON.stringify(puzzle.solution)}`);
+        if (played.used > puzzle.shots) issues.push(`${d.key}/${seed}: solution needs ${played.used} shots, budget ${puzzle.shots}`);
+      }
+    }
+    expect(issues).toEqual([]);
+  });
+
+  it("every Daily Challenge date (seeded like the component, forced to hard) is solvable", () => {
+    const hard = getFunctionRunnerDifficulty("hard");
+    const issues: string[] = [];
+    for (const date of DAILY_DATES) {
+      const puzzle = generateFunctionRunnerPuzzle(makeRng(`${date}:function-runner:hard`), "hard");
+      for (const issue of puzzleIssues(puzzle, hard)) issues.push(`${date}: ${issue}`);
+      if (playSolution(puzzle).remaining !== 0) issues.push(`${date}: solution does not clear the board`);
+    }
+    expect(issues).toEqual([]);
+  });
+
+  it("uses every curve family across seeds", () => {
+    const seen = { line: 0, quadratic: 0, sine: 0, abs: 0 };
+    for (const seed of SEEDS) {
+      for (const expression of generateFunctionRunnerPuzzle(makeRng(seed), "expert").solution) {
+        if (expression.includes("sin")) seen.sine++;
+        else if (expression.includes("abs")) seen.abs++;
+        else if (expression.includes("^2")) seen.quadratic++;
+        else seen.line++;
+      }
+    }
+    for (const count of Object.values(seen)) expect(count).toBeGreaterThan(20);
   });
 });
