@@ -255,6 +255,7 @@ export type FireError = { ok: false; error: string; position: number | null };
 export type SoloFire = { ok: true; game: SoloGame; result: ShotResult } | FireError;
 
 export const F0_UNDEFINED_ERROR = "f(0) 沒有定義，曲線無法從出發點畫起";
+export const FIRST_STEP_UNDEFINED_ERROR = "曲線一離開出發點就沒有定義";
 
 export function createSoloGame(puzzle: FunctionRunnerPuzzle): SoloGame {
   return { puzzle, alive: new Set(puzzle.targets.map((t) => t.id)), obstacles: new Set(puzzle.obstacles), shots: [] };
@@ -266,11 +267,12 @@ export function soloStatus(game: SoloGame): SoloStatus {
   return { remaining, shotsLeft, won: remaining === 0, lost: remaining > 0 && shotsLeft <= 0 };
 }
 
-/** Parse the expression and make sure the curve can start at the shooter. */
+/** Parse the expression and make sure the curve can leave the shooter: neither f(0) nor the first step may be undefined. */
 function prepareShot(expression: string): { ok: true; f: (x: number) => number } | FireError {
   const compiled = compileExpression(expression);
   if (!compiled.ok) return { ok: false, error: compiled.error, position: compiled.position };
   if (!Number.isFinite(compiled.f(0))) return { ok: false, error: F0_UNDEFINED_ERROR, position: null };
+  if (!Number.isFinite(compiled.f(SHOT_STEP))) return { ok: false, error: FIRST_STEP_UNDEFINED_ERROR, position: null };
   return { ok: true, f: compiled.f };
 }
 
@@ -382,10 +384,10 @@ interface HiddenCurve {
   path: Point[];
 }
 
-/** The curve as drawn: y = f(x) − f(0). Our own strings always compile. */
-function shiftedCurve(expression: string): (x: number) => number {
+/** The curve a shot draws for an expression, relative to the shooter: y = f(x) − f(0). Null when it does not compile. */
+export function shotCurve(expression: string): ((x: number) => number) | null {
   const compiled = compileExpression(expression);
-  if (!compiled.ok) throw new Error(`function runner: bad hidden curve ${expression}: ${compiled.error}`);
+  if (!compiled.ok) return null;
   const f0 = compiled.f(0);
   return (x) => compiled.f(x) - f0;
 }
@@ -397,7 +399,7 @@ function farEnough(p: Point, others: readonly Point[], spacing: number): boolean
 function drawHiddenCurve(rng: Rng, size: number, placed: readonly Point[]): HiddenCurve | null {
   for (let attempt = 0; attempt < GROUP_ATTEMPTS; attempt++) {
     const expression = rng.pick(FAMILIES_BY_GROUP_SIZE[size])(rng);
-    const g = shiftedCurve(expression);
+    const g = shotCurve(expression)!;
     const eligible: Point[] = [];
     for (let x = TARGET_MIN_X; x <= TARGET_MAX_X; x++) {
       const y = g(x);

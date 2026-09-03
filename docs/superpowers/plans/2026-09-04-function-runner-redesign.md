@@ -2408,3 +2408,13 @@ git commit -m "docs: describe the redesigned Function Runner"
 
 - Spec coverage: rules (Task 2–3), difficulty table and solvability (Task 4), PVP (Task 5), syntax + error strings (Task 1), UI/animation/overlays/panel (Task 6), registry + README (Task 7). Daily behaviour: the seed string and forced `hard` live in Task 6's `soloRng`/`effectiveDifficulty`; the daily solvability test lives in Task 4.
 - Names used across tasks: `simulateShot`, `ShotResult`, `craterCells`, `rasterize`, `cellCenter`, `createSoloGame`, `fireSolo`, `soloStatus`, `F0_UNDEFINED_ERROR`, `FireError`, `prepareShot`, `without`, `farEnough`, `markWithin`, `placeObstacles`, `forCellsNear`, `PUZZLE_ATTEMPTS`, `generatePvpMatch`, `firePvp`, `nextPvpUnit`, `pvpAlive`, `pvpDirection` — each is defined in the task before it is consumed.
+
+## Post-implementation notes (2026-09-04)
+
+Deviations from the tasks above, all carried into the spec:
+
+- **Target spread rule** (generator): every hidden curve must carry a target at x ≥ 6 and multi-target groups span ≥ 3 columns (`GROUP_MIN_REACH`, `GROUP_MIN_SPAN`). The first playtest boards had every target at x = 2 or 4.
+- **Shot animation fallback** (component): `requestAnimationFrame` pauses in hidden tabs and left the game stuck in the firing state, so a `setTimeout` settles the shot on schedule as well; `finish()` is guarded to run once.
+- **Input hardening** (from code review): expressions are capped at 400 characters (`MAX_EXPRESSION_LENGTH`, mirrored by `maxlength`), a curve undefined at its first step (`sqrt(-x)`) is refused without spending a shot (`FIRST_STEP_UNDEFINED_ERROR`), name lookups use `Object.hasOwn`, full-width spaces count as spaces, Enter is handled with an `isComposing` guard, coordinate labels flip to the left near the right edge, and the SVG is `role="group"` in PVP so the unit buttons stay reachable.
+- **Coverage**: the repo's 100% thresholds are met; the generator's give-up paths are reached with stub RNGs, and the hidden-curve compile guard became the public `shotCurve()` helper.
+- Final counts: 46 test files, 2183 tests; the function-runner suite has 31 tests and the expression suite 10.

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { makeRng } from "~/utils/rng";
+import type { Rng } from "~/utils/rng";
 import {
   CRATER_RADIUS,
   F0_UNDEFINED_ERROR,
+  FIRST_STEP_UNDEFINED_ERROR,
   FUNCTION_RUNNER_DIFFICULTIES,
   PVP_BOARD,
   PVP_OBSTACLES,
@@ -26,6 +28,7 @@ import {
   pvpAlive,
   pvpDirection,
   rasterize,
+  shotCurve,
   simulateShot,
   soloStatus,
 } from "~/games/function-runner";
@@ -265,6 +268,9 @@ describe("solo game", () => {
     expect(fireSolo(game, "2 +")).toEqual({ ok: false, error: "這裡少了數字或 x", position: 3 });
     expect(fireSolo(game, "ln(x)")).toEqual({ ok: false, error: F0_UNDEFINED_ERROR, position: null });
     expect(fireSolo(game, "1/x")).toEqual({ ok: false, error: F0_UNDEFINED_ERROR, position: null });
+    // defined at the shooter but nowhere to the right: the curve could never be drawn
+    expect(fireSolo(game, "sqrt(-x)")).toEqual({ ok: false, error: FIRST_STEP_UNDEFINED_ERROR, position: null });
+    expect(fireSolo(game, "x".repeat(401))).toMatchObject({ ok: false, error: "算式太長，最多 400 個字元" });
     expect(game.shots).toEqual([]);
   });
 
@@ -288,8 +294,17 @@ function puzzleIssues(puzzle: FunctionRunnerPuzzle, difficulty: FunctionRunnerDi
   if (puzzle.shapes.length !== difficulty.obstacles) issues.push(`${puzzle.shapes.length} obstacles instead of ${difficulty.obstacles}`);
   const ids = new Set(puzzle.targets.map((t) => t.id));
   if (ids.size !== puzzle.targets.length) issues.push("duplicate target ids");
-  // every hidden curve carries a target at x >= 6, so at least one target per group sits out in the board
-  if (puzzle.targets.filter((t) => t.x >= 6).length < difficulty.groups.length) issues.push("targets huddle next to the shooter");
+  // every hidden curve carries a target at x >= 6, so shots cross the board instead of huddling next to the shooter
+  for (const expression of puzzle.solution) {
+    const g = shotCurve(expression);
+    if (!g) {
+      issues.push(`hidden curve ${expression} does not compile`);
+      continue;
+    }
+    const onCurve = puzzle.targets.filter((t) => Math.abs(g(t.x) - t.y) < 1e-6);
+    if (onCurve.length === 0) issues.push(`hidden curve ${expression} carries no target`);
+    if (!onCurve.some((t) => t.x >= 6)) issues.push(`hidden curve ${expression} never reaches x >= 6`);
+  }
   puzzle.targets.forEach((t, i) => {
     if (!Number.isInteger(t.x) || !Number.isInteger(t.y)) issues.push(`non-integer target (${t.x}, ${t.y})`);
     if (t.x < 2 || t.x > 19 || Math.abs(t.y) > 7) issues.push(`target out of range (${t.x}, ${t.y})`);
@@ -322,6 +337,11 @@ function playSolution(puzzle: FunctionRunnerPuzzle): { remaining: number; used: 
 }
 
 const SEEDS: (string | number)[] = [...Array.from({ length: 300 }, (_, i) => `function-runner-${i}`), ...Array.from({ length: 100 }, (_, i) => i * 7919)];
+
+/** A seeded RNG with some methods pinned, to walk the generators into their give-up paths. */
+function stubRng(overrides: Partial<Rng>): Rng {
+  return { ...makeRng("stub"), ...overrides };
+}
 
 const DAILY_DATES = Array.from({ length: 3 * 366 }, (_, i) => {
   const d = new Date(2025, 0, 1 + i);
@@ -385,6 +405,22 @@ describe("puzzle generator", () => {
       }
     }
     for (const count of Object.values(seen)) expect(count).toBeGreaterThan(20);
+  });
+
+  it("exposes the drawn curve for an expression and refuses ones that do not compile", () => {
+    const g = shotCurve("2x + 5")!;
+    expect(g(0)).toBe(0);
+    expect(g(3)).toBe(6);
+    expect(shotCurve("2 +")).toBeNull();
+  });
+
+  it("gives up with an error instead of looping when the RNG never yields a usable round", () => {
+    // every hidden line comes out as -2x, whose targets never reach x >= 6
+    const stuckCurves = stubRng({ pick: (arr) => arr[0], shuffle: (arr) => arr, int: (min) => min });
+    expect(() => generateFunctionRunnerPuzzle(stuckCurves, "normal")).toThrow(/no normal puzzle after 50 attempts/);
+    // every obstacle lands on the same cells, so the second one can never be placed
+    const stuckObstacles = stubRng({ float: (_min, max) => max });
+    expect(() => generateFunctionRunnerPuzzle(stuckObstacles, "normal")).toThrow(/no normal puzzle after 50 attempts/);
   });
 });
 
@@ -510,5 +546,14 @@ describe("pvp match", () => {
     expect(nextPvpUnit(dead, 1, "p1-1")!.id).toBe("p1-3");
     const wiped = { ...match, units: match.units.map((u) => (u.owner === 2 ? { ...u, alive: false } : u)) };
     expect(nextPvpUnit(wiped, 2, null)).toBeNull();
+  });
+
+  it("gives up with an error instead of looping when the RNG never yields a legal map", () => {
+    // every unit lands on the same square, so no side ever gets three units
+    const stuckUnits = stubRng({ int: (min) => min });
+    expect(() => generatePvpMatch(stuckUnits)).toThrow(/no PVP map after 50 attempts/);
+    // units place fine but every obstacle lands on the same cells
+    const stuckObstacles = stubRng({ float: (_min, max) => max });
+    expect(() => generatePvpMatch(stuckObstacles)).toThrow(/no PVP map after 50 attempts/);
   });
 });

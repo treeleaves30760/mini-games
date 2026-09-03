@@ -13,6 +13,7 @@ import {
   pvpAlive,
   soloStatus,
 } from "~/games/function-runner";
+import { MAX_EXPRESSION_LENGTH } from "~/utils/expression";
 
 const accent = "#fb7185";
 /** SVG pixels per board unit. */
@@ -103,6 +104,10 @@ function sy(y) {
 function pointsString(path) {
   return path.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ");
 }
+/** Coordinate labels sit to the upper right, except near the right edge where they would leave the board. */
+function labelSide(point) {
+  return point.x > board.value.maxX - 2 ? { x: -14, anchor: "end" } : { x: 14, anchor: "start" };
+}
 function playerName(player) {
   return player === 1 ? "玩家一" : "玩家二";
 }
@@ -154,6 +159,13 @@ function selectUnit(unit) {
   if (firing.value || overlay.open || unit.owner !== match.value.turn || !unit.alive) return;
   shooterId.value = unit.id;
   focusInput();
+}
+
+/** Enter fires once; while an IME is composing it belongs to the IME. The form's own submit still serves the button. */
+function onEnter(event) {
+  if (event.isComposing) return;
+  event.preventDefault();
+  fire();
 }
 
 function fire() {
@@ -319,7 +331,7 @@ onBeforeUnmount(() => {
 
         <div class="board-wrap">
           <div v-if="board" class="function-board">
-            <svg class="plane" :viewBox="`0 0 ${viewWidth} ${viewHeight}`" role="img" aria-label="座標平面">
+            <svg class="plane" :viewBox="`0 0 ${viewWidth} ${viewHeight}`" :role="mode === 'pvp' ? 'group' : 'img'" aria-label="座標平面">
               <g class="plane__grid">
                 <line v-for="x in xTicks" :key="`v${x}`" :x1="sx(x)" :y1="sy(board.maxY)" :x2="sx(x)" :y2="sy(board.minY)" :class="{ 'is-axis': x === 0 }" />
                 <line v-for="y in yTicks" :key="`h${y}`" :x1="sx(board.minX)" :y1="sy(y)" :x2="sx(board.maxX)" :y2="sy(y)" :class="{ 'is-axis': y === 0 }" />
@@ -348,13 +360,13 @@ onBeforeUnmount(() => {
                 >
                   <circle class="plane__ring" r="17" />
                   <circle class="plane__dot" r="11" />
-                  <text class="plane__coord" x="14" y="-14">({{ unit.x }}, {{ unit.y }})</text>
+                  <text class="plane__coord" :x="labelSide(unit).x" :text-anchor="labelSide(unit).anchor" y="-14">({{ unit.x }}, {{ unit.y }})</text>
                 </g>
               </template>
               <template v-else-if="solo">
                 <g v-for="target in aliveTargets" :key="target.id" class="plane__target" :transform="`translate(${sx(target.x)} ${sy(target.y)})`">
                   <circle :r="TARGET_RADIUS * UNIT" />
-                  <text class="plane__coord" x="14" y="-14">({{ target.x }}, {{ target.y }})</text>
+                  <text class="plane__coord" :x="labelSide(target).x" :text-anchor="labelSide(target).anchor" y="-14">({{ target.x }}, {{ target.y }})</text>
                 </g>
                 <g class="plane__shooter" :transform="`translate(${sx(solo.puzzle.shooter.x)} ${sy(solo.puzzle.shooter.y)})`">
                   <circle class="plane__ring" r="17" />
@@ -395,8 +407,9 @@ onBeforeUnmount(() => {
             spellcheck="false"
             enterkeyhint="send"
             placeholder="例如 x^2/4 - 2x"
+            :maxlength="MAX_EXPRESSION_LENGTH"
             :disabled="inputDisabled"
-            @keydown.enter.prevent="fire"
+            @keydown.enter="onEnter"
           />
           <button class="btn btn--accent" type="submit" :disabled="fireDisabled">發射</button>
         </form>

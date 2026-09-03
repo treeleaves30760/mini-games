@@ -67,7 +67,7 @@ function tokenize(source: string): Token[] {
   while (i < source.length) {
     const raw = source[i];
     const ch = ALIASES[raw] ?? raw;
-    if (ch === " " || ch === "\t" || ch === "\n") {
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "　") {
       i++;
       continue;
     }
@@ -196,11 +196,11 @@ class Parser {
     }
     if (t.kind === "name") {
       if (t.value === "x") return (x) => x;
-      if (t.value in CONSTANTS) {
+      if (Object.hasOwn(CONSTANTS, t.value)) {
         const v = CONSTANTS[t.value];
         return () => v;
       }
-      const fn = FUNCTIONS[t.value];
+      const fn = Object.hasOwn(FUNCTIONS, t.value) ? FUNCTIONS[t.value] : undefined;
       if (!fn) {
         const prefix = Object.keys(FUNCTIONS).find((name) => t.value.startsWith(name));
         if (prefix) throw new ExpressionError(`${prefix} 後面要加括號，例如 ${prefix}(x)`, t.pos);
@@ -226,9 +226,17 @@ class Parser {
   }
 }
 
+/**
+ * Longest source accepted. Parsing recurses per nesting level and the compiled
+ * closures nest per operator, so bounding the text bounds both stacks: nothing a
+ * player can type makes evaluation throw.
+ */
+export const MAX_EXPRESSION_LENGTH = 400;
+
 /** Compile a typed expression into a closure, or explain (in Chinese) where it went wrong. */
 export function compileExpression(source: string): CompiledExpression {
   if (source.trim() === "") return { ok: false, error: "請輸入函式", position: 0 };
+  if (source.length > MAX_EXPRESSION_LENGTH) return { ok: false, error: `算式太長，最多 ${MAX_EXPRESSION_LENGTH} 個字元`, position: MAX_EXPRESSION_LENGTH };
   try {
     return { ok: true, f: new Parser(tokenize(source)).parse() };
   } catch (err) {

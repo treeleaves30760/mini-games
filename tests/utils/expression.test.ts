@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileExpression } from "~/utils/expression";
+import { MAX_EXPRESSION_LENGTH, compileExpression } from "~/utils/expression";
 
 function f(source: string): (x: number) => number {
   const compiled = compileExpression(source);
@@ -100,6 +100,20 @@ describe("expression parser", () => {
     expect(unknown).toEqual({ ok: false, error: "不認識的名稱 foo", position: 4 });
     const symbol = compileExpression("2$3");
     expect(symbol).toEqual({ ok: false, error: "不認識的符號「$」", position: 1 });
+  });
+
+  it("treats full-width spaces as spaces and only knows its own names", () => {
+    expect(f("2　x")(3)).toBe(6);
+    expect(fails("constructor(x)")).toBe("不認識的名稱 constructor");
+    expect(fails("toString")).toBe("不認識的名稱 tostring");
+  });
+
+  it("caps the source length so nothing typed can overflow the parser or the compiled closures", () => {
+    expect(MAX_EXPRESSION_LENGTH).toBe(400);
+    const long = "x+".repeat(200) + "x";
+    expect(compileExpression(long)).toEqual({ ok: false, error: "算式太長，最多 400 個字元", position: 400 });
+    expect(compileExpression("(".repeat(5000) + "x" + ")".repeat(5000)).ok).toBe(false);
+    expect(f("x+".repeat(150) + "x")(1)).toBe(151);
   });
 
   it("never throws on odd input", () => {
