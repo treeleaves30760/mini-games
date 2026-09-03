@@ -35,6 +35,12 @@ export const DAILY_ROTATION = [
   "prime-hunter",
   "countdown",
   "function-runner",
+  "flow",
+  "rush-hour",
+  "water-sort",
+  "skyscrapers",
+  "rullo",
+  "untangle",
 ] as const;
 
 export type DailyGameId = (typeof DAILY_ROTATION)[number];

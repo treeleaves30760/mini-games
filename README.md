@@ -4,11 +4,11 @@ A collection of browser mini-games in Traditional Chinese, built with **Vue 3 + 
 
 Live: https://treeleaves30760.github.io/mini-games/
 
-**44 games** plus a **Daily Challenge**, grouped on the home page:
+**50 games** plus a **Daily Challenge**, grouped on the home page:
 
 | Group | Games |
 | --- | --- |
-| 邏輯 Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents |
+| 邏輯 Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents, Flow, Rush Hour, Water Sort, Skyscrapers, Rullo, Untangle |
 | 棋類 Board (vs computer) | Gomoku (with Renju forbidden moves), Reversi, Chess, Shogi, Tic-Tac-Toe, Dots & Boxes |
 | 數學 Math | 2048, 15 Puzzle, Make 24, Mastermind, KenKen, Equation Maze, Fraction Balance, Prime Hunter, Countdown Numbers, Function Runner |
 | 文字 Word | Word Guess (5–8 letters, with meanings), Japanese Word Guess (hiragana, with meanings, examples and speech), Word Search |
