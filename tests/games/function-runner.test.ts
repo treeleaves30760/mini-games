@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CRATER_RADIUS,
+  F0_UNDEFINED_ERROR,
   PVP_BOARD,
   SOLO_BOARD,
   SOLO_SHOOTER,
@@ -10,11 +11,14 @@ import {
   cellCenter,
   cellIndexAt,
   craterCells,
+  createSoloGame,
   distancePointToSegment,
+  fireSolo,
   rasterize,
   simulateShot,
+  soloStatus,
 } from "~/games/function-runner";
-import type { Board, Target } from "~/games/function-runner";
+import type { Board, FunctionRunnerPuzzle, Target } from "~/games/function-runner";
 
 const board: Board = SOLO_BOARD;
 
@@ -180,5 +184,83 @@ describe("shot simulation", () => {
     simulateShot(board, obstacles, targets, SOLO_SHOOTER, () => 0);
     expect([...obstacles].sort((a, b) => a - b)).toEqual(before);
     expect(JSON.stringify(targets)).toBe(snapshot);
+  });
+});
+
+describe("solo game", () => {
+  const wallShape = { kind: "rect", cx: 12, cy: 0, w: 1, h: 4 } as const;
+  const puzzle: FunctionRunnerPuzzle = {
+    difficulty: "normal",
+    board: SOLO_BOARD,
+    shooter: SOLO_SHOOTER,
+    shots: 2,
+    targets: [
+      { id: "t1", x: 4, y: 0 },
+      { id: "t2", x: 6, y: 3 },
+    ],
+    shapes: [wallShape],
+    obstacles: rasterize(SOLO_BOARD, wallShape),
+    solution: ["0", "x/2"],
+  };
+
+  it("starts with every target alive, every obstacle standing and no shots fired", () => {
+    const game = createSoloGame(puzzle);
+    expect([...game.alive]).toEqual(["t1", "t2"]);
+    expect(game.obstacles.size).toBe(puzzle.obstacles.length);
+    expect(game.shots).toEqual([]);
+    expect(soloStatus(game)).toEqual({ remaining: 2, shotsLeft: 2, won: false, lost: false });
+  });
+
+  it("applies a shot without mutating the previous state", () => {
+    const game = createSoloGame(puzzle);
+    const fired = fireSolo(game, "0");
+    expect(fired.ok).toBe(true);
+    if (!fired.ok) return;
+    expect(fired.result.hits).toEqual(["t1"]);
+    expect(fired.result.end).toBe("obstacle");
+    expect([...fired.game.alive]).toEqual(["t2"]);
+    expect(fired.game.obstacles.size).toBe(puzzle.obstacles.length - fired.result.cleared.length);
+    expect(fired.game.shots).toHaveLength(1);
+    expect(soloStatus(fired.game)).toEqual({ remaining: 1, shotsLeft: 1, won: false, lost: false });
+    expect([...game.alive]).toEqual(["t1", "t2"]);
+    expect(game.obstacles.size).toBe(puzzle.obstacles.length);
+    expect(game.shots).toEqual([]);
+  });
+
+  it("wins when the last target falls and refuses further shots", () => {
+    let game = createSoloGame(puzzle);
+    for (const expression of puzzle.solution) {
+      const fired = fireSolo(game, expression);
+      expect(fired.ok).toBe(true);
+      if (fired.ok) game = fired.game;
+    }
+    expect(soloStatus(game)).toEqual({ remaining: 0, shotsLeft: 0, won: true, lost: false });
+    expect(fireSolo(game, "x")).toEqual({ ok: false, error: "目標已經全部命中", position: null });
+  });
+
+  it("loses when the shots run out with targets left", () => {
+    let game = createSoloGame(puzzle);
+    for (let i = 0; i < 2; i++) {
+      const fired = fireSolo(game, "5x");
+      expect(fired.ok).toBe(true);
+      if (fired.ok) game = fired.game;
+    }
+    expect(soloStatus(game)).toEqual({ remaining: 2, shotsLeft: 0, won: false, lost: true });
+    expect(fireSolo(game, "0")).toEqual({ ok: false, error: "射擊次數已用完", position: null });
+  });
+
+  it("rejects bad input without spending a shot", () => {
+    const game = createSoloGame(puzzle);
+    expect(fireSolo(game, "2 +")).toEqual({ ok: false, error: "這裡少了數字或 x", position: 3 });
+    expect(fireSolo(game, "ln(x)")).toEqual({ ok: false, error: F0_UNDEFINED_ERROR, position: null });
+    expect(fireSolo(game, "1/x")).toEqual({ ok: false, error: F0_UNDEFINED_ERROR, position: null });
+    expect(game.shots).toEqual([]);
+  });
+
+  it("cancels the constant term so the curve always leaves from the shooter", () => {
+    const game = createSoloGame(puzzle);
+    const flat = fireSolo(game, "0");
+    const lifted = fireSolo(game, "7");
+    expect(flat.ok && lifted.ok && JSON.stringify(flat.result) === JSON.stringify(lifted.result)).toBe(true);
   });
 });

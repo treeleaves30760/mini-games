@@ -12,6 +12,8 @@
    Obstacles live on a grid of CELL-sized squares indexed row * cols + col.
    ========================================================================= */
 
+import { compileExpression } from "~/utils/expression";
+
 export interface Point {
   x: number;
   y: number;
@@ -212,4 +214,84 @@ export function simulateShot(
     if (last) break;
   }
   return result;
+}
+
+/* ---------------------------------------------------------------------------
+   Solo puzzles and game state
+   --------------------------------------------------------------------------- */
+
+export type FunctionRunnerDifficultyKey = "easy" | "normal" | "hard" | "expert";
+
+export interface FunctionRunnerPuzzle {
+  difficulty: FunctionRunnerDifficultyKey;
+  board: Board;
+  shooter: Shooter;
+  shots: number;
+  targets: Target[];
+  /** The obstacle shapes the generator drew (for tests and debugging). */
+  shapes: ObstacleShape[];
+  /** Obstacle cells, ascending. */
+  obstacles: number[];
+  /** One hidden curve per target group; firing them in order clears the board. */
+  solution: string[];
+}
+
+export interface SoloGame {
+  puzzle: FunctionRunnerPuzzle;
+  alive: Set<string>;
+  obstacles: Set<number>;
+  shots: ShotResult[];
+}
+
+export interface SoloStatus {
+  remaining: number;
+  shotsLeft: number;
+  won: boolean;
+  lost: boolean;
+}
+
+export type FireError = { ok: false; error: string; position: number | null };
+export type SoloFire = { ok: true; game: SoloGame; result: ShotResult } | FireError;
+
+export const F0_UNDEFINED_ERROR = "f(0) 沒有定義，曲線無法從出發點畫起";
+
+export function createSoloGame(puzzle: FunctionRunnerPuzzle): SoloGame {
+  return { puzzle, alive: new Set(puzzle.targets.map((t) => t.id)), obstacles: new Set(puzzle.obstacles), shots: [] };
+}
+
+export function soloStatus(game: SoloGame): SoloStatus {
+  const remaining = game.alive.size;
+  const shotsLeft = game.puzzle.shots - game.shots.length;
+  return { remaining, shotsLeft, won: remaining === 0, lost: remaining > 0 && shotsLeft <= 0 };
+}
+
+/** Parse the expression and make sure the curve can start at the shooter. */
+function prepareShot(expression: string): { ok: true; f: (x: number) => number } | FireError {
+  const compiled = compileExpression(expression);
+  if (!compiled.ok) return { ok: false, error: compiled.error, position: compiled.position };
+  if (!Number.isFinite(compiled.f(0))) return { ok: false, error: F0_UNDEFINED_ERROR, position: null };
+  return { ok: true, f: compiled.f };
+}
+
+function without<T>(set: ReadonlySet<T>, removed: readonly T[]): Set<T> {
+  const next = new Set(set);
+  for (const item of removed) next.delete(item);
+  return next;
+}
+
+export function fireSolo(game: SoloGame, expression: string): SoloFire {
+  const status = soloStatus(game);
+  if (status.won) return { ok: false, error: "目標已經全部命中", position: null };
+  if (status.lost) return { ok: false, error: "射擊次數已用完", position: null };
+  const prepared = prepareShot(expression);
+  if (!prepared.ok) return prepared;
+  const targets = game.puzzle.targets.filter((t) => game.alive.has(t.id));
+  const result = simulateShot(game.puzzle.board, game.obstacles, targets, game.puzzle.shooter, prepared.f);
+  const next: SoloGame = {
+    puzzle: game.puzzle,
+    alive: without(game.alive, result.hits),
+    obstacles: without(game.obstacles, result.cleared),
+    shots: [...game.shots, result],
+  };
+  return { ok: true, game: next, result };
 }
