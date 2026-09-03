@@ -859,7 +859,7 @@ const GAMES: Game[] = [
     id: "function-runner",
     title: "座標射擊",
     titleEn: "Function Runner",
-    desc: "調係數命中目標點",
+    desc: "寫函式擊中目標點",
     accent: "#fb7185",
     category: "數學",
     type: "native",

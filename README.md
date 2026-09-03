@@ -44,6 +44,10 @@ A node budget and a wall clock bound every search; whichever runs out first stop
 
 Chess searches its own 0x88 board (verified against `chess.js` and published perft counts in `tests/games/chess.test.ts`) because generating moves through `chess.js` is too slow for deep search. Shogi keeps `tsshogi` as the rules authority.
 
+### Function Runner
+
+座標射擊 is a Graphwar-style shooter: you type `f(x)` and the curve `y = f(x) − f(0)` is fired from the origin, destroying every target it passes and stopping at the first obstacle, where it blasts a small crater. `app/utils/expression.ts` parses the input with a small recursive-descent parser (implicit multiplication, `^`, `sin`/`cos`/`tan`/`abs`/`sqrt`/`exp`/`ln`/`floor`, `pi`/`e`) — no `eval`. Puzzles are generated from hidden solution curves (lines, parabolas, sine waves, V shapes with friendly coefficients) and obstacles are kept clear of them, so every round is solvable within its shot budget; the tests fire the hidden curves through the real simulation for hundreds of seeds and three years of Daily dates. 雙人 is a hot-seat mode on one device: each side has three units, turns alternate, and `+x` always points at the opponent.
+
 ## Design
 
 - **Dark, warm-neutral chrome; colour comes from the games.** Each game has one accent colour, used for its icon, its selected states and its primary button. Nothing else on the page is coloured.
@@ -98,7 +102,7 @@ pnpm preview       # preview the production build
 │   │   ├── index.vue              # home
 │   │   ├── daily.vue              # Daily Challenge
 │   │   └── games/                 # one route per game
-│   ├── utils/                     # rng.ts (seeded RNG), sudoku.ts (generator / solver)
+│   ├── utils/                     # rng.ts (seeded RNG), sudoku.ts (generator / solver), expression.ts (f(x) parser)
 │   └── workers/                   # chess-ai.ts / shogi-ai.ts
 ├── tests/                         # Vitest suites for app/games and app/utils
 ├── public/favicon.svg
