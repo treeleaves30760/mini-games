@@ -30,7 +30,7 @@ const best = ref(0);
 const level = ref(1);
 const lines = ref(0);
 const paused = ref(false);
-const overlay = reactive({ open: true, mode: 'start', title: '準備好了嗎？', sub: '用方向鍵移動，↑ 旋轉，空白鍵直落。', action: '開始遊戲' });
+const overlay = reactive({ open: true, mode: 'start', title: '俄羅斯方塊', sub: '方向鍵移動，↑ 旋轉，空白鍵直落。', action: '開始' });
 
 // ---- non-reactive state ----
 let ctx = null, pCtx = null;
@@ -115,7 +115,7 @@ function gameOver() {
     best.value = score.value;
     localStorage.setItem(BEST_KEY, String(best.value));
   }
-  showOverlay('restart', '遊戲結束', `得分 ${score.value}　·　最佳 ${best.value}`, '再玩一次');
+  showOverlay('restart', '遊戲結束', `得分 ${score.value}，最佳 ${best.value}`, '再玩一次');
 }
 
 function reset() {
@@ -143,7 +143,7 @@ function restart() { reset(); start(); }
 function togglePause() {
   if (!started || over) return;
   paused.value = !paused.value;
-  if (paused.value) showOverlay('resume', '已暫停', '隨時繼續。', '繼續遊戲');
+  if (paused.value) showOverlay('resume', '已暫停', '', '繼續');
   else overlay.open = false;
 }
 
@@ -341,7 +341,7 @@ onMounted(() => {
   best.value = +(localStorage.getItem(BEST_KEY) || 0);
   reset();
   resize();
-  showOverlay('start', '俄羅斯方塊', '方向鍵移動，↑ 旋轉，空白鍵直落。', '開始遊戲');
+  showOverlay('start', '俄羅斯方塊', '方向鍵移動，↑ 旋轉，空白鍵直落。', '開始');
   window.addEventListener('resize', resize);
   window.addEventListener('keydown', onKey);
   window.addEventListener('keyup', onKeyUp);
@@ -424,7 +424,7 @@ onBeforeUnmount(() => {
 
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">操作方式</span>
+          <span class="panel__legend">操作</span>
           <p class="hint">
             移動：<kbd>←</kbd><kbd>→</kbd><br />
             旋轉（順時針）：<kbd>↑</kbd> 或 <kbd>X</kbd><br />
@@ -440,7 +440,7 @@ onBeforeUnmount(() => {
             消 1 行：100 × 等級<br />
             消 2 行：300 × 等級<br />
             消 3 行：500 × 等級<br />
-            消 4 行（俄羅斯）：800 × 等級<br />
+            消 4 行：800 × 等級<br />
             直落：每格 +2 分
           </p>
         </div>

@@ -98,16 +98,16 @@ function endGame(ownersArr) {
   if (playerScore > aiScore) {
     emit("solved", { playerScore, aiScore });
     stats.wins++;
-    overlay.title = "你贏了！";
-    overlay.sub = `你 ${playerScore} — 電腦 ${aiScore}，漂亮！`;
+    overlay.title = "你贏了";
+    overlay.sub = `你 ${playerScore} — 電腦 ${aiScore}`;
   } else if (aiScore > playerScore) {
     stats.losses++;
-    overlay.title = "電腦獲勝";
-    overlay.sub = `你 ${playerScore} — 電腦 ${aiScore}，再接再厲！`;
+    overlay.title = "電腦贏了";
+    overlay.sub = `你 ${playerScore} — 電腦 ${aiScore}`;
   } else {
     stats.draws++;
-    overlay.title = "平局！";
-    overlay.sub = `你 ${playerScore} — 電腦 ${aiScore}。`;
+    overlay.title = "平局";
+    overlay.sub = `你 ${playerScore} — 電腦 ${aiScore}`;
   }
   overlay.open = true;
   saveStats();
@@ -331,7 +331,7 @@ function onEdgeLeave() { hovered.value = -1; }
                 <button class="btn btn--accent" @click="restart">再來一局</button>
               </div>
               <div class="overlay__actions" v-else>
-                <button class="btn" @click="overlay.open = false">完成！</button>
+                <button class="btn" @click="overlay.open = false">完成</button>
               </div>
             </div>
           </div>
@@ -360,14 +360,14 @@ function onEdgeLeave() { hovered.value = -1; }
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            點擊任意未畫線的邊來畫線。<br/>
-            當你完成一個方格（畫上第四條邊），方格歸你並可再走一步。<br/>
-            全部邊畫完後，格子多的一方獲勝。
+            點擊未畫線的邊來畫線。<br/>
+            畫滿方格四邊即拿下，並可再走一步。<br/>
+            邊全部畫完，格子多的一方獲勝。
           </p>
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">顏色</span>
+          <span class="panel__legend">圖例</span>
           <div class="color-legend">
             <div class="color-swatch" style="background: rgba(255,143,163,0.4); border:1px solid rgba(255,143,163,0.7)"></div>
             <span class="hint">你的格子（粉）</span>

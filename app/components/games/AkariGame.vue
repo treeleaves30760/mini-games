@@ -218,8 +218,8 @@ onMounted(() => { regenerate(); });
           <!-- Win overlay -->
           <div class="overlay" :class="{ 'is-open': gameWon }">
             <div class="overlay__card">
-              <h2 class="overlay__title">全部照亮！</h2>
-              <p class="overlay__sub">每個角落都亮起來了！</p>
+              <h2 class="overlay__title">完成</h2>
+              <p class="overlay__sub">已使用 {{ bulbCount }} 個燈泡</p>
               <div class="overlay__actions">
                 <button v-if="!props.daily" class="btn btn--accent" @click="newPuzzle">換一題</button>
                 <button class="btn" @click="clearBulbs">關閉</button>
@@ -245,15 +245,16 @@ onMounted(() => { regenerate(); });
       <!-- Side panel -->
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            點一下白格放／收燈泡。燈泡會照亮整行整列直到牆壁，讓全部白格都被照亮；
-            任兩顆燈泡不能互相照到，數字牆周圍的燈泡數要剛好等於牆上的數字。
+            點白格放燈泡，照亮同行同列到牆壁為止。
+            所有白格都要被照亮，燈泡不能互相照到。
+            數字牆旁的燈泡數要等於數字。
           </p>
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">說明</span>
+          <span class="panel__legend">圖例</span>
           <div class="legend-list">
             <div class="legend-row">
               <span class="legend-swatch swatch-wall"></span>

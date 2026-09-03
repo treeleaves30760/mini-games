@@ -253,9 +253,9 @@ onBeforeUnmount(() => { window.removeEventListener("keydown", onKey); });
 
           <div class="overlay" :class="{ 'is-open': overlay.open }">
             <div class="overlay__card">
-              <h2 class="overlay__title">過關！</h2>
+              <h2 class="overlay__title">過關</h2>
               <p class="overlay__sub">
-                <template v-if="daily">今日推箱子完成，共走 {{ moves }} 步！</template>
+                <template v-if="daily">今日推箱子完成，共走 {{ moves }} 步。</template>
                 <template v-else>{{ level.name }} 完成，共走 {{ moves }} 步。</template>
               </p>
               <div class="overlay__actions">

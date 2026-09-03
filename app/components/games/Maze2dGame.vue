@@ -93,10 +93,10 @@ function onWin() {
   }
   emit("solved", { steps: s, time: t });
   if (props.daily) {
-    overlay.title = "完成！";
+    overlay.title = "完成";
     overlay.sub = `${s} 步，${formatTime(t)} 走出迷宮。`;
   } else {
-    overlay.title = "走出去了！";
+    overlay.title = "走出去了";
     overlay.sub = `用 ${s} 步，耗時 ${formatTime(t)}。`;
   }
   overlay.open = true;
@@ -257,7 +257,7 @@ onBeforeUnmount(() => {
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="迷宮" title-en="Maze">
       <template #actions>
-        <button class="btn btn--accent" @click="generate">新迷宮</button>
+        <button class="btn btn--accent" @click="generate">{{ daily ? "重來" : "新迷宮" }}</button>
       </template>
     </GameTopbar>
 
@@ -293,7 +293,7 @@ onBeforeUnmount(() => {
               <p class="overlay__sub">{{ overlay.sub }}</p>
               <div class="overlay__actions">
                 <button v-if="!props.daily" class="btn btn--accent" @click="generate">新迷宮</button>
-                <button v-else class="btn" disabled>完成！</button>
+                <button v-else class="btn" disabled>完成</button>
               </div>
             </div>
           </div>
@@ -322,15 +322,15 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">目標</span>
-          <p class="hint">從左上角（藍點）出發，找到右下角的金星。每個迷宮都有唯一通道可達終點。</p>
+          <span class="panel__legend">玩法</span>
+          <p class="hint">從左上角出發，找到右下角的金星。每個迷宮都有唯一通道可達終點。</p>
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">操作方式</span>
+          <span class="panel__legend">操作</span>
           <p class="hint">
             鍵盤：<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><br />
-            觸控：在畫面上滑動，或點擊下方按鈕移動。
+            觸控：滑動或點按方向鍵
           </p>
         </div>
       </aside>

@@ -194,7 +194,7 @@ onBeforeUnmount(() => { stopTimer(); });
           :aria-pressed="markMode"
           @click="markMode = !markMode"
         >✕ 標記</button>
-        <button class="btn btn--accent" @click="initGame">新題目</button>
+        <button class="btn btn--accent" @click="initGame">{{ daily ? "重來" : "新題目" }}</button>
       </template>
     </GameTopbar>
 
@@ -272,10 +272,10 @@ onBeforeUnmount(() => { stopTimer(); });
 
           <div class="overlay" :class="{ 'is-open': gameState === 'won' }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ daily ? '完成！' : '🎨 解題成功！' }}</h2>
+              <h2 class="overlay__title">完成</h2>
               <p class="overlay__sub">
                 <template v-if="daily">今日數織完成，用時 {{ elapsed }} 秒。</template>
-                <template v-else>太棒了！用時 {{ elapsed }} 秒完成圖案。</template>
+                <template v-else>用時 {{ elapsed }} 秒。</template>
               </p>
               <div class="overlay__actions">
                 <button v-if="!daily" class="btn btn--accent" @click="initGame">下一題</button>
@@ -302,8 +302,9 @@ onBeforeUnmount(() => { stopTimer(); });
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            依照左側和上方的數字提示，填滿正確的格子。<br />
-            數字代表該行/列連續填色的格數，多組數字代表多段，各段之間至少有一格空白。
+            依照左側和上方的數字，填滿對應的格子。<br />
+            數字是連續填色的格數，多段之間至少留一格空白。<br />
+            完成的行列數字會變暗。
           </p>
         </div>
         <div class="panel__group">
@@ -313,10 +314,6 @@ onBeforeUnmount(() => { stopTimer(); });
             右鍵點擊（或開啟「✕ 標記」後點擊）：標記確定為空的格子<br />
             拖曳可連續填色整行/整列。
           </p>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">提示完成</span>
-          <p class="hint">當一行或一列的提示滿足條件時，數字會變暗，表示該行/列已完成。</p>
         </div>
       </aside>
     </div>

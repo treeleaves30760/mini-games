@@ -81,7 +81,7 @@ const searchText = computed(() => {
   const info = aiProgress.value;
   if (!info) return aiThinking.value ? "搜尋中…" : "";
   const nodes = info.nodes.toLocaleString("en-US");
-  return `第 ${info.depth} 層 · ${nodes} 節點 · ${(info.timeMs / 1000).toFixed(1)}s`;
+  return `第 ${info.depth} 層，${nodes} 節點，${(info.timeMs / 1000).toFixed(1)} 秒`;
 });
 
 watch(
@@ -210,11 +210,11 @@ function resolveGame() {
       stats.wins++;
       emit("solved", {});
       overlay.title = "你將死 AI";
-      overlay.sub = `${status}，漂亮收官。`;
+      overlay.sub = status;
     } else {
       stats.losses++;
       overlay.title = "AI 將死你";
-      overlay.sub = `${status}，換個開局再試。`;
+      overlay.sub = status;
     }
   } else {
     stats.draws++;
@@ -293,7 +293,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="game-page" :style="{ '--accent': accent }">
-    <GameTopbar title="國際象棋" title-en="Chess">
+    <GameTopbar title="西洋棋" title-en="Chess">
       <template #actions>
         <button class="btn" :disabled="!canUndo" @click="undoMove">悔棋</button>
         <button class="btn btn--accent" @click="restart">重新開始</button>
@@ -313,12 +313,12 @@ onBeforeUnmount(() => {
           </div>
           <div class="chip">
             <span class="chip__label">AI</span>
-            <span class="chip__value">{{ activeLevel.short }}</span>
+            <span class="chip__value">{{ activeLevel.label }}</span>
           </div>
         </div>
 
         <div class="board-wrap chess-wrap">
-          <div class="chess-board" role="grid" aria-label="國際象棋棋盤">
+          <div class="chess-board" role="grid" aria-label="西洋棋棋盤">
             <button
               v-for="cell in boardCells"
               :key="cell.square"
@@ -380,7 +380,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">AI 難度</span>
+          <span class="panel__legend">電腦強度</span>
           <div class="levels">
             <button
               v-for="level in CHESS_LEVELS"
@@ -394,16 +394,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <p class="hint">{{ activeLevel.note }}</p>
-          <p class="hint hint--engine">{{ engineText }}</p>
           <p class="search-line" v-if="searchText">{{ searchText }}</p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">引擎選擇</span>
-          <p class="hint">
-            規則由 <strong style="color: var(--text)">chess.js</strong> 驗證。最強開源棋力是
-            Stockfish 18，但最新版含 NNUE，不屬純 rule-based；本頁使用可離線部署的手工評估 alpha-beta AI。
-          </p>
         </div>
 
         <div class="panel__group">

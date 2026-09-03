@@ -144,8 +144,8 @@ function triggerWinCheck() {
 
   // WIN
   gameWon.value   = true;
-  overlay.title   = '全部接通！';
-  overlay.sub     = '所有島嶼都連起來了！';
+  overlay.title   = '全部接通';
+  overlay.sub     = `共架了 ${totalBridges.value} 座橋`;
   overlay.open    = true;
   emit('solved', {});
 }
@@ -390,10 +390,11 @@ function bridgeLine(b, offsetIndex) {
       <!-- Side panel -->
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            點選一座島，再點同排或同列的另一座島，即可在兩島間架 0 / 1 / 2 座橋。<br />
-            讓每座島的橋數等於島上的數字，並把所有島連成一片。
+            點選同排或同列的兩座島架橋。<br />
+            再點一次可增加橋數，0→1→2→0 循環。<br />
+            橋不能交叉或穿越島嶼；數字要等於橋數，且全部相連。
           </p>
         </div>
 
@@ -408,14 +409,6 @@ function bridgeLine(b, offsetIndex) {
               @click="difficulty = d.key"
             >{{ d.label }}</button>
           </div>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">提示</span>
-          <p class="hint">
-            橋不能交叉，也不能穿越島嶼。<br />
-            對同一對島再次點擊可增加橋數（0 → 1 → 2 → 0）。
-          </p>
         </div>
       </aside>
     </div>

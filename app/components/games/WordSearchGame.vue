@@ -124,13 +124,8 @@ function handleWin() {
   gameWon.value = true;
   stopTimer();
   const t = elapsed.value;
-  if (props.daily) {
-    overlay.title = '完成！';
-    overlay.sub = `全部找到了！用時 ${formatTime(t)}。`;
-  } else {
-    overlay.title = '太厲害了！';
-    overlay.sub = `找完所有單字！用時 ${formatTime(t)}。`;
-  }
+  overlay.title = '完成';
+  overlay.sub = `找到 ${wordList.value.length} 個單字，用時 ${formatTime(t)}`;
   overlay.open = true;
   emit('solved', { time: t });
   try {
@@ -257,8 +252,11 @@ onBeforeUnmount(() => {
 
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
-          <p class="hint">在格子中找出右側所有單字，可以橫、縱、斜向，或反向排列。<br />
-          用手指或滑鼠從第一個字母拖曳到最後一個字母。</p>
+          <p class="hint">
+            在格子中找出右側的單字。<br />
+            可橫、縱、斜向，含反向。<br />
+            手指或滑鼠拖曳選字。
+          </p>
         </div>
       </aside>
     </div>

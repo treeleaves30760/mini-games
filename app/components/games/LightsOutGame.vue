@@ -96,7 +96,7 @@ onBeforeUnmount(() => { stopTimer(); });
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="關燈" title-en="Lights Out">
       <template #actions>
-        <button class="btn btn--accent" @click="initGame">重新打亂</button>
+        <button class="btn btn--accent" @click="initGame">{{ daily ? "重來" : "重新打亂" }}</button>
       </template>
     </GameTopbar>
 
@@ -112,7 +112,7 @@ onBeforeUnmount(() => { stopTimer(); });
             <span class="chip__value">{{ elapsed }}s</span>
           </div>
           <div class="chip">
-            <span class="chip__label">目標</span>
+            <span class="chip__label">參考步數</span>
             <span class="chip__value">{{ scrambleMoves }}</span>
           </div>
         </div>
@@ -139,13 +139,13 @@ onBeforeUnmount(() => { stopTimer(); });
 
           <div class="overlay" :class="{ 'is-open': gameState === 'won' }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ daily ? '完成！' : '🌙 全滅！' }}</h2>
+              <h2 class="overlay__title">{{ daily ? '完成' : '全滅' }}</h2>
               <p class="overlay__sub">
                 <template v-if="daily">
-                  今日關燈完成！用了 {{ moves }} 步，共 {{ elapsed }} 秒。
+                  今日關燈完成，共 {{ moves }} 步，{{ elapsed }} 秒。
                 </template>
                 <template v-else>
-                  太厲害了！你用了 {{ moves }} 步把所有燈都關掉了。
+                  共 {{ moves }} 步。
                 </template>
               </p>
               <div class="overlay__actions">
@@ -174,20 +174,7 @@ onBeforeUnmount(() => { stopTimer(); });
           <span class="panel__legend">玩法</span>
           <p class="hint">
             點擊任一格，該格及其上下左右相鄰格的燈會切換亮暗。<br />
-            目標是把所有燈都關掉！
-          </p>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">目標步數</span>
-          <p class="hint">
-            「目標」欄顯示打亂時實際生效的按壓次數（同一格按兩次會互相抵銷），是理論上的參考解法步數。<br />
-            實際上可能存在更短的解法！
-          </p>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">小提示</span>
-          <p class="hint">
-            每個按鈕按兩下等於沒按。從角落或邊緣開始分析，逐步消滅亮燈往往更有效率。
+            目標是把所有燈都關掉。
           </p>
         </div>
       </aside>

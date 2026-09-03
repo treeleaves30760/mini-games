@@ -77,8 +77,8 @@ function submit() {
     emit("solved", { attempts });
     stats.wins++;
     if (stats.best === null || attempts < stats.best) stats.best = attempts;
-    overlay.title = "猜中了！";
-    overlay.sub = `第 ${attempts} 次猜中，太厲害了！`;
+    overlay.title = "猜中了";
+    overlay.sub = `第 ${attempts} 次猜中`;
     overlay.open = true;
     saveStats();
     return;
@@ -88,8 +88,8 @@ function submit() {
     gameOver.value = true;
     revealed.value = true;
     stats.losses++;
-    overlay.title = "很可惜！";
-    overlay.sub = `答案是 ${secret.value.join(" ")}，下次加油！`;
+    overlay.title = "很可惜";
+    overlay.sub = `答案是 ${secret.value.join(" ")}`;
     overlay.open = true;
     saveStats();
   }
@@ -177,7 +177,7 @@ const DIGIT_COLORS = [
           <div class="chip">
             <span class="chip__label">狀態</span>
             <span class="chip__value">
-              {{ gameOver ? (won ? '🎉 成功' : '失敗') : '進行中' }}
+              {{ gameOver ? (won ? '成功' : '失敗') : '進行中' }}
             </span>
           </div>
           <div class="chip">
@@ -328,7 +328,7 @@ const DIGIT_COLORS = [
             猜一組 4 位數（不重複），最多 8 次。<br/>
             <strong style="color:var(--accent)">A</strong> = 數字對、位置對；
             <strong style="color: var(--text-dim)">B</strong> = 數字對但位置不對。<br/>
-            根據提示縮小範圍，猜出答案即獲勝！
+            根據提示縮小範圍，猜出答案即獲勝。
           </p>
         </div>
 
@@ -351,7 +351,7 @@ const DIGIT_COLORS = [
           <button class="btn btn--accent" @click="restart">再玩一次</button>
         </div>
         <div class="overlay__actions" v-else>
-          <button class="btn" @click="overlay.open = false">完成！</button>
+          <button class="btn" @click="overlay.open = false">完成</button>
         </div>
       </div>
     </div>

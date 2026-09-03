@@ -349,13 +349,13 @@ onBeforeUnmount(() => {
 
           <div class="overlay" :class="{ 'is-open': overlayOpen }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ isRecord ? "新紀錄！" : "曹操逃脫了！" }}</h2>
+              <h2 class="overlay__title">{{ isRecord ? "新紀錄" : "曹操逃脫了" }}</h2>
               <p class="overlay__sub">
-                {{ layoutName }} · {{ moveCount }} 步{{ isRecord ? "（最佳）" : (bestMoves ? ` · 最佳 ${bestMoves}` : "") }}
+                {{ layoutName }}，{{ moveCount }} 步{{ isRecord ? "（最佳）" : (bestMoves ? `，最佳 ${bestMoves}` : "") }}
               </p>
               <div class="overlay__actions">
                 <button v-if="!daily" class="btn btn--accent" @click="newGame">再玩一局</button>
-                <span v-else class="hint">今日挑戰完成！</span>
+                <span v-else class="hint">今日挑戰完成</span>
               </div>
             </div>
           </div>
@@ -364,9 +364,10 @@ onBeforeUnmount(() => {
 
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">目標</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            把<strong>曹操</strong>（大方塊）移到棋盤底部中央出口處（發亮的虛線格）逃出。
+            把<strong>曹操</strong>移到棋盤底部中央出口（發亮虛線格）即可逃脫。<br />
+            此佈局最少需要 <strong>{{ minMoves }}</strong> 步。
           </p>
         </div>
 
@@ -376,14 +377,6 @@ onBeforeUnmount(() => {
             <strong>拖曳</strong>方塊可直接滑動。<br />
             也可先<strong>點選</strong>方塊（邊框發光），再點擊目標空格，方塊自動滑過去。<br />
             選中方塊後可用 <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 方向鍵逐格移動。
-          </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">提示</span>
-          <p class="hint">
-            此佈局最少需要 <strong>{{ minMoves }}</strong> 步（直線滑動一次計一步），請耐心規劃路線。<br />
-            <strong>上一步</strong>可以撤銷，<strong>重設</strong>回到初始狀態。
           </p>
         </div>
       </aside>

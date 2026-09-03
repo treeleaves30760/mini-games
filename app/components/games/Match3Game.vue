@@ -41,7 +41,7 @@ const best = ref(0);
 const movesLeft = ref(MOVE_LIMIT);
 const selected = ref(null); // { row, col }
 const animating = ref(false);
-const overlay = reactive({ open: true, mode: 'start', title: '寶石消除', sub: `${MOVE_LIMIT} 步內達到 ${TARGET_SCORE} 分！`, action: '開始遊戲' });
+const overlay = reactive({ open: true, mode: 'start', title: '寶石消除', sub: `${MOVE_LIMIT} 步內達到 ${TARGET_SCORE} 分。`, action: '開始' });
 const gameActive = ref(false);
 
 let rng = makeRng(props.seed);
@@ -182,7 +182,7 @@ async function onCellClick(row, col) {
   // check win/lose
   if (score.value >= TARGET_SCORE) {
     emit('solved', { score: score.value });
-    showOverlay('solved', '恭喜！', `得分 ${score.value} 已達目標！`, '再玩一次');
+    showOverlay('solved', '你贏了', `得分 ${score.value}，已達目標。`, '再玩一次');
   } else if (movesLeft.value <= 0) {
     showOverlay('gameover', '遊戲結束', `得分 ${score.value}，目標 ${TARGET_SCORE}。`, '再玩一次');
   }

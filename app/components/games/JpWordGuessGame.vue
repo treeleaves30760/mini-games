@@ -145,9 +145,8 @@ async function submitGuess() {
     solvedWord.value = wordObj.value;
     rememberWord(wordObj.value.kana);
     saveStats(true);
-    const praise = ["天才！", "厲害！", "太棒了！", "做到了！", "不錯哦！", "好險！"];
     overlay.win = true;
-    overlay.title = `${praise[Math.min(row, 5)]}  ✿`;
+    overlay.title = "猜中了";
     overlay.sub = `用了 ${row + 1} 次猜中`;
     overlay.open = true;
     emit("solved", { guesses: row + 1 });
@@ -162,7 +161,7 @@ async function submitGuess() {
     solvedWord.value = wordObj.value; // reveal the word even on a loss — still learn it
     saveStats(false);
     overlay.win = false;
-    overlay.title = "很可惜…";
+    overlay.title = "很可惜";
     overlay.sub = "下面是這個單字的解說";
     overlay.open = true;
   }
@@ -414,7 +413,7 @@ onBeforeUnmount(() => {
                   <div class="mean"><span class="mean__tag">中文</span>{{ solvedWord.zh }}</div>
                   <div class="mean"><span class="mean__tag">EN</span>{{ solvedWord.en }}</div>
                 </div>
-                <p v-if="solvedWord.note" class="word-card__note">💡 {{ solvedWord.note }}</p>
+                <p v-if="solvedWord.note" class="word-card__note">{{ solvedWord.note }}</p>
                 <div class="word-card__ex">
                   <span class="word-card__ex-label">例句 / Examples</span>
                   <div v-for="(ex, i) in solvedWord.examples" :key="i" class="ex">
@@ -484,7 +483,7 @@ onBeforeUnmount(() => {
           <p class="hint">
             猜一個 4 個假名的日文常用單字，共 {{ MAX_GUESSES }} 次機會。可點下方的五十音鍵盤，
             或用實體鍵盤直接輸入羅馬拼音（例：<code>tomodachi</code> → ともだち）。猜對後會顯示這個字的
-            <b>中文、英文意思、用法小提示與兩個例句</b>{{ canSpeak ? '，還能按 🔊 聽日語發音' : '' }}。
+            <b>中文、英文意思、用法小提示與兩個例句</b>{{ canSpeak ? '，還能聽發音' : '' }}。
           </p>
         </div>
 
@@ -500,11 +499,11 @@ onBeforeUnmount(() => {
             <span class="meaning-toggle__track"><span class="meaning-toggle__thumb"></span></span>
             <span>顯示中文意思{{ showMeaning ? '（開）' : '（關）' }}</span>
           </button>
-          <p class="hint">日文詞彙量還不多嗎？開啟後會先告訴你這個字的中文意思，你只要拼出對應的日文假名即可，邊玩邊背。</p>
+          <p class="hint">先顯示中文意思，只要拼出假名。</p>
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">顏色說明</span>
+          <span class="panel__legend">圖例</span>
           <div class="wg-legend">
             <div class="wg-legend-item">
               <span class="wg-legend-cell state-correct">あ</span>

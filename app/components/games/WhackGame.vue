@@ -28,7 +28,7 @@ const score = ref(0);
 const best = ref(0);
 const timeLeft = ref(30);
 const paused = ref(false);
-const overlay = reactive({ open: true, mode: 'start', title: '打地鼠', sub: '30 秒內盡量打地鼠，小心炸彈！', action: '開始遊戲' });
+const overlay = reactive({ open: true, mode: 'start', title: '打地鼠', sub: '點擊跳出的地鼠得分，炸彈扣分。', action: '開始' });
 
 // non-reactive state
 let ctx = null;
@@ -100,7 +100,7 @@ function gameEnd() {
     localStorage.setItem(BEST_KEY, String(best.value));
   }
   emit('solved', { score: score.value });
-  showOverlay('solved', '時間到！', `得分 ${score.value}　·　最佳 ${best.value}`, '再玩一次');
+  showOverlay('solved', '時間到', `得分 ${score.value}，最佳 ${best.value}`, '再玩一次');
 }
 
 // ---- update ----
@@ -402,7 +402,7 @@ function resize() {
 function onVis() {
   if (document.hidden && started && !over && !paused.value) {
     paused.value = true;
-    showOverlay('resume', '已暫停', '', '繼續遊戲');
+    showOverlay('resume', '已暫停', '', '繼續');
   }
 }
 
@@ -418,7 +418,7 @@ onMounted(() => {
   best.value = +(localStorage.getItem(BEST_KEY) || 0);
   reset();
   resize();
-  showOverlay('start', '打地鼠', '30 秒內盡量打地鼠，小心炸彈會扣分和時間！', '開始遊戲');
+  showOverlay('start', '打地鼠', '點擊跳出的地鼠得分，炸彈扣分。', '開始');
   window.addEventListener('resize', resize);
   document.addEventListener('visibilitychange', onVis);
   rafId = requestAnimationFrame(loop);
@@ -494,8 +494,8 @@ onBeforeUnmount(() => {
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            點擊或點選跳出的地鼠得分。<br />
-            出現炸彈時千萬別打！否則扣 15 分且時間減 3 秒。<br />
+            點擊跳出的地鼠得分。<br />
+            打到炸彈扣 15 分，時間減 3 秒。<br />
             地鼠越快打分數越高。
           </p>
         </div>
@@ -504,7 +504,7 @@ onBeforeUnmount(() => {
           <p class="hint">
             打到地鼠：+10 ～ +20 分（後期加成）<br />
             打到炸彈：-15 分，-3 秒時間<br />
-            共 30 秒，盡量拿高分！
+            共 30 秒
           </p>
         </div>
       </aside>

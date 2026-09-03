@@ -127,8 +127,8 @@ function tapPad(padId) {
       best.value = score.value;
       localStorage.setItem(BEST_KEY, String(best.value));
     }
-    overlay.title = "錯了！";
-    overlay.sub = `答到第 ${round.value} 回合，得分 ${score.value}。最佳：${best.value}。`;
+    overlay.title = "答錯了";
+    overlay.sub = `答到第 ${round.value} 回合，得分 ${score.value}，最佳 ${best.value}。`;
     overlay.open = true;
     emit("solved", { score: score.value });
     return;
@@ -145,16 +145,16 @@ function tapPad(padId) {
     }
     if (props.daily && round.value >= DAILY_WIN_ROUND) {
       phase.value = "win";
-      overlay.title = "完成！";
-      overlay.sub = `今日挑戰：${DAILY_WIN_ROUND} 回合全部正確！`;
+      overlay.title = "今日挑戰完成";
+      overlay.sub = `${DAILY_WIN_ROUND} 回合全部正確，得分 ${score.value}。`;
       overlay.open = true;
       emit("solved", { score: score.value });
       return;
     }
     if (round.value >= SEQ_LEN) {
       phase.value = "win";
-      overlay.title = "全部完成！";
-      overlay.sub = `你記住了完整 ${SEQ_LEN} 步序列！`;
+      overlay.title = "全部完成";
+      overlay.sub = `完整 ${SEQ_LEN} 步序列，得分 ${score.value}。`;
       overlay.open = true;
       emit("solved", { score: score.value });
       return;
@@ -238,10 +238,10 @@ onBeforeUnmount(() => {
             <div class="simon-hub">
               <span class="simon-hub__phase">
                 <template v-if="phase === 'idle'">按「開始」</template>
-                <template v-else-if="phase === 'flashing'">記住！</template>
+                <template v-else-if="phase === 'flashing'">記住順序</template>
                 <template v-else-if="phase === 'input'">輸入中</template>
-                <template v-else-if="phase === 'over'">錯！</template>
-                <template v-else-if="phase === 'win'">完成！</template>
+                <template v-else-if="phase === 'over'">答錯了</template>
+                <template v-else-if="phase === 'win'">完成</template>
               </span>
               <span v-if="phase === 'input'" class="simon-hub__progress">
                 {{ inputIndex }}/{{ round }}
@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
               <div class="overlay__actions">
                 <button v-if="!daily" class="btn btn--accent" @click="startGame">再玩一次</button>
                 <template v-else>
-                  <p class="hint">今日挑戰結束！</p>
+                  <p class="hint">今日挑戰結束</p>
                 </template>
               </div>
             </div>
@@ -275,7 +275,7 @@ onBeforeUnmount(() => {
           </p>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">鍵盤操作</span>
+          <span class="panel__legend">操作</span>
           <p class="hint">
             <kbd>1</kbd>綠&nbsp;
             <kbd>2</kbd>紅&nbsp;
@@ -286,7 +286,7 @@ onBeforeUnmount(() => {
         </div>
         <div v-if="daily" class="panel__group">
           <span class="panel__legend">今日挑戰</span>
-          <p class="hint">序列由今日日期生成。答對 {{ DAILY_WIN_ROUND }} 回合即完成！</p>
+          <p class="hint">今日挑戰：答對 {{ DAILY_WIN_ROUND }} 回合即完成。</p>
         </div>
       </aside>
     </div>

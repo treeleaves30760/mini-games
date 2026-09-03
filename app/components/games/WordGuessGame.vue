@@ -179,13 +179,12 @@ function finish(won, row) {
   lastDef.value = def || "";
 
   if (won) {
-    const msgs = ["天才！", "超強！", "太棒了！", "做到了！", "還不錯！", "好險！"];
-    overlay.title = props.daily ? "完成！" : msgs[Math.min(row, msgs.length - 1)];
+    overlay.title = "猜中了";
     overlay.note = `用了 ${row + 1} / ${maxGuesses.value} 次`;
     emit("solved", { guesses: row + 1 });
   } else {
     overlay.title = "很可惜";
-    overlay.note = "再接再厲！";
+    overlay.note = "";
   }
   overlay.answer = answer.value;
   overlay.def = def || "";
@@ -403,7 +402,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">顏色說明</span>
+          <span class="panel__legend">圖例</span>
           <div class="wg-legend">
             <div class="wg-legend-item">
               <span class="wg-legend-cell state-correct">A</span>
@@ -423,7 +422,9 @@ onBeforeUnmount(() => {
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            猜一個 {{ length }} 個字母的英文單字，共 {{ maxGuesses }} 次機會。每次猜測後方格會翻面變色提示，猜中或用完機會後會告訴你這個單字的意思。
+            猜一個 {{ length }} 個字母的英文單字。<br />
+            共 {{ maxGuesses }} 次機會，方格變色提示對錯。<br />
+            結束後顯示單字意思。
           </p>
         </div>
 

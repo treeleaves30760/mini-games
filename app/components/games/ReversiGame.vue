@@ -106,18 +106,18 @@ function endGame() {
     winner.value = BLACK;
     emit("solved", { black, white });
     stats.wins++;
-    overlay.title = "黑方獲勝！";
-    overlay.sub = `黑 ${black} — 白 ${white}，恭喜你！`;
+    overlay.title = "黑方獲勝";
+    overlay.sub = `黑 ${black} — 白 ${white}。`;
   } else if (white > black) {
     winner.value = WHITE;
     stats.losses++;
     overlay.title = "白方獲勝";
-    overlay.sub = `黑 ${black} — 白 ${white}，再接再厲！`;
+    overlay.sub = `黑 ${black} — 白 ${white}。`;
   } else {
     winner.value = 0;
     stats.draws++;
-    overlay.title = "平局！";
-    overlay.sub = `黑 ${black} — 白 ${white}，旗鼓相當。`;
+    overlay.title = "平局";
+    overlay.sub = `黑 ${black} — 白 ${white}。`;
   }
   overlay.open = true;
   saveStats();
@@ -216,7 +216,7 @@ const discCounts = computed(() => countDiscs(board.value));
                 <button class="btn btn--accent" @click="restart">再來一局</button>
               </div>
               <div class="overlay__actions" v-else>
-                <button class="btn" @click="overlay.open = false">完成！</button>
+                <button class="btn" @click="overlay.open = false">完成</button>
               </div>
             </div>
           </div>
@@ -247,14 +247,6 @@ const discCounts = computed(() => countDiscs(board.value));
           <p class="hint">
             你執黑棋先手。點擊標有綠點的格子落子，將夾住的對方棋子全數翻轉。<br/>
             若無合法落點則自動跳過。雙方都無法落子時計算棋數，多者獲勝。
-          </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">策略提示</span>
-          <p class="hint">
-            角落最有價值，搶到角落幾乎無法被翻回。<br/>
-            避免讓對手輕易取角，角落旁邊的格子要謹慎。
           </p>
         </div>
       </aside>

@@ -23,7 +23,7 @@ const paused = ref(false);
 const wrap = ref(false);
 const overlay = reactive({
   open: true, mode: "start",
-  title: "準備好了嗎？", sub: "用方向鍵 / WASD 控制，或在畫面上滑動。", action: "開始遊戲",
+  title: "貪食蛇", sub: "方向鍵或滑動控制方向。", action: "開始",
 });
 
 // ---- non-reactive game state (hot loop) ----
@@ -68,13 +68,13 @@ function gameOver() {
     best.value = score.value;
     localStorage.setItem(BEST_KEY, String(best.value));
   }
-  showOverlay("restart", "遊戲結束", `本局得分 ${score.value}　·　最佳 ${best.value}`, "再玩一次");
+  showOverlay("restart", "遊戲結束", `得分 ${score.value}，最佳 ${best.value}`, "再玩一次");
 }
 
 function togglePause() {
   if (!started || over) return;
   paused.value = !paused.value;
-  if (paused.value) showOverlay("resume", "已暫停", "休息一下，準備好再繼續。", "繼續遊戲");
+  if (paused.value) showOverlay("resume", "已暫停", "", "繼續");
   else overlay.open = false;
 }
 
@@ -291,7 +291,7 @@ onMounted(() => {
   best.value = +(localStorage.getItem(BEST_KEY) || 0);
   reset();
   resize();
-  showOverlay("start", "準備好了嗎？", "用方向鍵 / WASD 控制，或在畫面上滑動。", "開始遊戲");
+  showOverlay("start", "貪食蛇", "方向鍵或滑動控制方向。", "開始");
   window.addEventListener("resize", resize);
   window.addEventListener("keydown", onKey);
   document.addEventListener("visibilitychange", onVis);
@@ -321,15 +321,15 @@ onBeforeUnmount(() => {
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Score</span>
+            <span class="chip__label">分數</span>
             <span class="chip__value is-accent">{{ score }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Best</span>
+            <span class="chip__label">最佳</span>
             <span class="chip__value">{{ best }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Speed</span>
+            <span class="chip__label">速度</span>
             <span class="chip__value">{{ level }}</span>
           </div>
         </div>
@@ -363,26 +363,25 @@ onBeforeUnmount(() => {
 
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">玩法設定</span>
+          <span class="panel__legend">穿牆</span>
           <div class="toggle-row">
-            <span>穿牆模式</span>
+            <span>從邊界穿出到另一側</span>
             <button class="switch" role="switch" :aria-checked="wrap" aria-label="穿牆模式" @click="wrap = !wrap" />
           </div>
-          <p class="hint">開啟後，從邊界穿出會由另一側出現；關閉則撞牆即結束。</p>
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">操作方式</span>
+          <span class="panel__legend">玩法</span>
+          <p class="hint">吃到果實加 10 分，速度逐漸加快。撞到牆或自己就結束。</p>
+        </div>
+
+        <div class="panel__group">
+          <span class="panel__legend">操作</span>
           <p class="hint">
             移動：<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><br />
             暫停：<kbd>空白鍵</kbd> 或 <kbd>P</kbd><br />
-            行動裝置可直接在畫面上滑動。
+            觸控：滑動
           </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">關於</span>
-          <p class="hint">每吃一顆果實 +10 分，速度也會逐步加快。小心別咬到自己！</p>
         </div>
       </aside>
     </div>

@@ -55,17 +55,17 @@ function resolveGame(b) {
         tally.win++;
         saveTally();
         emit("solved", {});
-        overlay.title = "你贏了！";
-        overlay.sub = "漂亮的三連線！";
+        overlay.title = "你贏了";
+        overlay.sub = `${tally.win} 勝 ${tally.draw} 和 ${tally.loss} 負`;
       } else {
         tally.loss++;
         saveTally();
         overlay.title = "電腦贏了";
-        overlay.sub = "再試一次，你可以的！";
+        overlay.sub = `${tally.win} 勝 ${tally.draw} 和 ${tally.loss} 負`;
       }
     } else {
-      overlay.title = result.winner === X ? "✕ 獲勝！" : "◯ 獲勝！";
-      overlay.sub = "精彩的對局！";
+      overlay.title = result.winner === X ? "✕ 獲勝" : "◯ 獲勝";
+      overlay.sub = "";
     }
     overlay.open = true;
     return true;
@@ -74,8 +74,8 @@ function resolveGame(b) {
     isDraw.value = true;
     gameOver.value = true;
     if (mode.value === "ai") { tally.draw++; saveTally(); }
-    overlay.title = "平局！";
-    overlay.sub = "棋逢對手，不分勝負。";
+    overlay.title = "平局";
+    overlay.sub = mode.value === "ai" ? `${tally.win} 勝 ${tally.draw} 和 ${tally.loss} 負` : "";
     overlay.open = true;
     return true;
   }
@@ -166,7 +166,7 @@ function cellClass(idx) {
 const statusText = computed(() => {
   if (gameOver.value) {
     if (isDraw.value) return "平局";
-    if (mode.value === "ai") return winner.value === X ? "你贏了！" : "電腦贏了";
+    if (mode.value === "ai") return winner.value === X ? "你贏了" : "電腦贏了";
     return winner.value === X ? "✕ 勝" : "◯ 勝";
   }
   if (mode.value === "ai") {
@@ -268,11 +268,10 @@ const statusText = computed(() => {
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
             3×3 棋盤，率先連成一線（橫、直、斜）的一方獲勝。<br />
-            你執 <strong>✕</strong>，電腦執 <strong>◯</strong>。<br />
-            困難模式使用 Minimax 演算法，近乎無敵。
+            你執 <strong>✕</strong>，電腦執 <strong>◯</strong>。
           </p>
         </div>
 

@@ -147,19 +147,19 @@ onBeforeUnmount(() => stopTimer());
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Time</span>
+            <span class="chip__label">時間</span>
             <span class="chip__value is-accent">{{ timeStr }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Moves</span>
+            <span class="chip__label">步數</span>
             <span class="chip__value">{{ moves }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Pairs</span>
+            <span class="chip__label">配對</span>
             <span class="chip__value">{{ matched }} / {{ totalPairs }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Best</span>
+            <span class="chip__label">最佳</span>
             <span class="chip__value">{{ bestStr }}</span>
           </div>
         </div>
@@ -189,13 +189,13 @@ onBeforeUnmount(() => stopTimer());
 
           <div class="overlay" :class="{ 'is-open': won }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ isRecord ? "新紀錄！" : "全部配對完成！" }}</h2>
+              <h2 class="overlay__title">{{ isRecord ? "新紀錄" : "完成" }}</h2>
               <p class="overlay__sub">
-                難度 {{ diffLabel }}　·　{{ moves }} 步　·　用時 {{ timeStr }}{{ isRecord ? "（最佳）" : ` · 最佳 ${bestStr}` }}
+                難度 {{ diffLabel }}，{{ moves }} 步，用時 {{ timeStr }}{{ isRecord ? "（最佳）" : `，最佳 ${bestStr}` }}
               </p>
               <div class="overlay__actions">
                 <button v-if="!daily" class="btn btn--accent" @click="newGame()">再來一局</button>
-                <span v-else class="hint">今日挑戰完成 🎉</span>
+                <span v-else class="hint">今日挑戰完成</span>
               </div>
             </div>
           </div>
@@ -215,20 +215,13 @@ onBeforeUnmount(() => stopTimer());
               {{ d.label }}
             </button>
           </div>
-          <p class="hint">切換難度會開始新的一局（{{ cols }}×{{ rows }} 張牌、{{ totalPairs }} 組）。</p>
         </div>
 
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            每回合翻開兩張卡片：圖案<strong>相同</strong>就配對成功、留在正面；
-            <strong>不同</strong>則自動蓋回去。記住每張卡的位置，把所有成對的卡片都翻開即過關。
+            翻開兩張卡片，圖案<strong>相同</strong>即配對成功；<strong>不同</strong>則蓋回去。記住位置，配對完所有卡片即過關。
           </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">小提示</span>
-          <p class="hint">用越少步數越好。先翻開沒看過的新卡蒐集資訊，再回頭配對你已經記住位置的卡片。</p>
         </div>
       </aside>
     </div>

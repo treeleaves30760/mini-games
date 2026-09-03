@@ -309,15 +309,15 @@ onBeforeUnmount(() => {
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Size</span>
+            <span class="chip__label">大小</span>
             <span class="chip__value is-accent">{{ sizeLabel }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Steps</span>
+            <span class="chip__label">步數</span>
             <span class="chip__value">{{ steps }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Cleared</span>
+            <span class="chip__label">完成</span>
             <span class="chip__value">{{ cleared }}</span>
           </div>
         </div>
@@ -327,8 +327,8 @@ onBeforeUnmount(() => {
           <canvas ref="miniRef" width="150" height="150" class="maze-mini" aria-hidden="true" />
           <div class="overlay" :class="{ 'is-open': won }">
             <div class="overlay__card">
-              <h2 class="overlay__title">找到出口！</h2>
-              <p class="overlay__sub">迷宮 {{ sizeLabel }}　·　{{ steps }} 步走出。</p>
+              <h2 class="overlay__title">找到出口</h2>
+              <p class="overlay__sub">迷宮 {{ sizeLabel }}，{{ steps }} 步走出。</p>
               <div class="overlay__actions">
                 <button class="btn btn--accent" @click="startMaze(difficulty)">下一座迷宮</button>
               </div>
@@ -357,21 +357,22 @@ onBeforeUnmount(() => {
               {{ d.label }}
             </button>
           </div>
+        </div>
+
+        <div class="panel__group">
+          <span class="panel__legend">玩法</span>
           <p class="hint">找到發光的出口即過關。右上角小地圖會顯示你的位置與朝向。</p>
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">操作方式</span>
+          <span class="panel__legend">操作</span>
           <p class="hint">
-            前進：<kbd>↑</kbd> / <kbd>W</kbd>　後退：<kbd>↓</kbd> / <kbd>S</kbd><br />
-            左轉：<kbd>←</kbd> / <kbd>A</kbd>　右轉：<kbd>→</kbd> / <kbd>D</kbd><br />
-            行動裝置可使用畫面下方的方向鍵。
+            前進：<kbd>↑</kbd> / <kbd>W</kbd><br />
+            後退：<kbd>↓</kbd> / <kbd>S</kbd><br />
+            左轉：<kbd>←</kbd> / <kbd>A</kbd><br />
+            右轉：<kbd>→</kbd> / <kbd>D</kbd><br />
+            觸控：方向鍵
           </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">關於</span>
-          <p class="hint">以 Three.js 即時渲染的第一人稱迷宮，展示本站對 3D / WebGL 遊戲的擴充能力。</p>
         </div>
       </aside>
     </div>

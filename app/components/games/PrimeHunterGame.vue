@@ -53,7 +53,7 @@ function checkWin() {
   nextTick(() => {
     if (!status.value.solved) return;
     won.value = true;
-    overlay.title = "全部命中！";
+    overlay.title = "全部命中";
     overlay.sub = `已找出 ${status.value.correct} 個符合條件的數。`;
     overlay.open = true;
     emit("solved", {});
@@ -67,7 +67,7 @@ onMounted(generate);
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="質數獵人" title-en="Prime Hunter">
       <template #actions>
-        <button class="btn btn--accent" @click="generate">新題目</button>
+        <button class="btn btn--accent" @click="generate">{{ daily ? "重來" : "新題目" }}</button>
       </template>
     </GameTopbar>
 
@@ -139,7 +139,7 @@ onMounted(generate);
           <p class="hint">{{ puzzle?.rule.label }}</p>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
             點選所有符合條件的數字，不能漏選也不能錯選。卡片下方會顯示質因數分解，困難以上需要判斷質因數結構。
           </p>

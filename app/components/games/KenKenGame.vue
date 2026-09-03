@@ -95,7 +95,7 @@ function checkWin() {
   if (!puzzle.value || !isKenKenSolved(puzzle.value, cells.value)) return;
   won.value = true;
   selected.value = null;
-  overlay.title = "完成！";
+  overlay.title = "完成";
   overlay.sub = `${size.value}×${size.value} 算術數獨已解開。`;
   overlay.open = true;
   emit("solved", {});
@@ -108,7 +108,7 @@ onMounted(generate);
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="算術數獨" title-en="KenKen">
       <template #actions>
-        <button class="btn btn--accent" @click="generate">新題目</button>
+        <button class="btn btn--accent" @click="generate">{{ daily ? "重來" : "新題目" }}</button>
       </template>
     </GameTopbar>
 
@@ -193,24 +193,11 @@ onMounted(generate);
           </div>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">新手指引</span>
-          <ol class="guide-list">
-            <li>先找單格區塊，左上只有數字時，該格就是那個答案。</li>
-            <li>看每個區塊左上角，例如 7+ 代表區塊內數字相加要等於 7。</li>
-            <li>同一行、同一列都必須放入 1 到 {{ size }}，且不能重複。</li>
-            <li>紅框代表目前有衝突，先修正紅框再繼續推理。</li>
-          </ol>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            每行、每列都要填入 1 到 {{ size }}，且不能重複。每個粗框區塊必須用左上角的目標和運算符算出答案。
-          </p>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">提示</span>
-          <p class="hint">
-            紅框代表目前行列重複，或完整區塊的運算結果不符。專家難度會有更大的盤面與更多多格區塊。
+            每行每列都要填入 1 到 {{ size }}，不能重複。<br />
+            每個粗框區塊要用運算符算出左上角的目標數。<br />
+            紅框代表目前重複或區塊結果不符。
           </p>
         </div>
       </aside>

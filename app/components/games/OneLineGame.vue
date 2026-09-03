@@ -29,7 +29,7 @@ const used = ref(new Set());
 const solved = ref(false);
 const solvedSet = ref(new Set());
 const rubber = reactive({ show: false, x1: 0, y1: 0, x2: 0, y2: 0 });
-const overlay = reactive({ open: false, title: "過關！", sub: "", lastLevel: false });
+const overlay = reactive({ open: false, title: "過關", sub: "", lastLevel: false });
 let dragging = false;
 
 // ---- derived ----
@@ -69,8 +69,8 @@ function checkWin() {
   }
   const last = li.value === total - 1;
   overlay.lastLevel = last;
-  overlay.title = last && solvedSet.value.size === total ? "全部完成！" : "過關！";
-  overlay.sub = last ? "你已完成最後一關，太強了。" : "一筆完成，漂亮。準備好下一關了嗎？";
+  overlay.title = last && solvedSet.value.size === total ? "全部完成" : "過關";
+  overlay.sub = last ? "你已完成最後一關。" : "一筆完成。";
   overlay.open = true;
 }
 
@@ -191,15 +191,15 @@ onMounted(() => {
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Level</span>
+            <span class="chip__label">關卡</span>
             <span class="chip__value is-accent">{{ li + 1 }} / {{ total }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Edges</span>
+            <span class="chip__label">線段</span>
             <span class="chip__value">{{ used.size }} / {{ edges.length }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Cleared</span>
+            <span class="chip__label">已過關</span>
             <span class="chip__value">{{ cleared }}</span>
           </div>
         </div>
@@ -269,7 +269,7 @@ onMounted(() => {
 
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">本關</span>
+          <span class="panel__legend">本關規則</span>
           <p class="hint">{{ ruleHint }}</p>
         </div>
 
@@ -279,14 +279,6 @@ onMounted(() => {
             點一個點當起點，接著沿著線「拖曳」或「點擊」相鄰的點。<br />
             每條線只能畫一次，往回拖可以收回上一步。<br />
             畫完所有線段即過關。
-          </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">小提示</span>
-          <p class="hint">
-            若有兩個「奇點」(連奇數條線的點)，必須從其中一個出發；
-            若全是「偶點」，從任意點出發都行。
           </p>
         </div>
       </aside>

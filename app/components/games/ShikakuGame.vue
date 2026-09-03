@@ -214,15 +214,15 @@ onBeforeUnmount(() => stopTimer());
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Time</span>
+            <span class="chip__label">時間</span>
             <span class="chip__value is-accent">{{ timeStr }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Clues</span>
+            <span class="chip__label">數字</span>
             <span class="chip__value">{{ solvedCount }} / {{ clues.length }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Best</span>
+            <span class="chip__label">最佳</span>
             <span class="chip__value">{{ bestStr }}</span>
           </div>
         </div>
@@ -269,9 +269,9 @@ onBeforeUnmount(() => stopTimer());
 
           <div class="overlay" :class="{ 'is-open': won }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ isRecord ? "新紀錄！" : "完成！" }}</h2>
+              <h2 class="overlay__title">{{ isRecord ? "新紀錄" : "完成" }}</h2>
               <p class="overlay__sub">
-                難度 {{ diffLabel }}　·　用時 {{ timeStr }}{{ isRecord ? "（最佳）" : ` · 最佳 ${bestStr}` }}
+                難度 {{ diffLabel }}，用時 {{ timeStr }}{{ isRecord ? "（最佳）" : `，最佳 ${bestStr}` }}
               </p>
               <div class="overlay__actions">
                 <button class="btn btn--accent" @click="newGame()">再來一局</button>
@@ -294,7 +294,6 @@ onBeforeUnmount(() => stopTimer());
               {{ d.label }}
             </button>
           </div>
-          <p class="hint">切換難度會開始新的一局（目前 {{ rows }}×{{ cols }} 格）。</p>
         </div>
 
         <div class="panel__group">
@@ -312,13 +311,6 @@ onBeforeUnmount(() => stopTimer());
             正確的框會變<span class="ink-accent">綠色</span>，不正確則顯示<span class="ink-bad">紅色</span>。
           </p>
           <button class="btn btn--ghost panel__btn" @click="clearAll">清空全部</button>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">小提示</span>
-          <p class="hint">
-            先從只有一種畫法的數字下手——靠牆角、或數字特別大／特別小的格子，可走的選擇通常很有限。卡關時可按「提示」自動補上一塊。
-          </p>
         </div>
       </aside>
     </div>

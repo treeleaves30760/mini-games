@@ -1,11 +1,9 @@
 /* =========================================================================
-   Game shell — shared NEON ARCADE chrome for every game page: top bar,
-   back button, layout scaffold, LED HUD chips, control panel, segmented
-   control, switch, CRT win/lose overlay, toast, D-pad.
+   Game shell — shared chrome for every game page: top bar, layout scaffold,
+   HUD chips, side panel, segmented control, switch, overlay, D-pad.
 
-   A game page sets --accent on :root and everything tints + glows to match.
-   Class names + fonts are kept stable so all 35 game components keep working;
-   only the surface treatment changes.
+   A game page sets --accent on its root and the controls tint to match.
+   Class names are a stable contract used by all game components.
    ========================================================================= */
 
 .game-page {
@@ -14,44 +12,32 @@
   min-height: 100dvh;
 }
 
-/* ---- Top bar — translucent CRT marquee with a neon hairline ---- */
+/* ---- Top bar ---- */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.85rem clamp(1rem, 4vw, 2.5rem);
-  background: color-mix(in oklab, var(--ink-900) 74%, transparent);
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  gap: 0.9rem;
+  padding: 0.65rem clamp(0.9rem, 4vw, 2rem);
+  background: var(--ink-900);
   border-bottom: 1px solid var(--line);
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--accent) 22%, transparent);
 }
 
 .topbar__back {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.5rem 0.95rem 0.5rem 0.75rem;
+  gap: 0.35rem;
+  padding: 0.45rem 0.8rem 0.45rem 0.55rem;
   border-radius: var(--r-pill);
-  border: 1px solid var(--line-strong);
-  font-family: var(--font-display);
-  font-size: 0.88rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
+  font-size: 0.9rem;
   color: var(--text-dim);
-  transition: color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease),
-    background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .topbar__back:hover {
-  color: #fff;
-  border-color: color-mix(in oklab, var(--accent) 55%, var(--line-strong));
-  background: color-mix(in oklab, var(--ink-700) 80%, transparent);
-  box-shadow: var(--glow-sm);
-  transform: translateX(-2px);
+  color: var(--text);
+  background: var(--ink-800);
 }
 .topbar__back svg {
   width: 16px;
@@ -61,31 +47,28 @@
 .topbar__title {
   display: flex;
   align-items: baseline;
-  gap: 0.6rem;
-  margin-inline-start: 0.2rem;
+  gap: 0.55rem;
+  min-width: 0;
 }
 .topbar__title h1 {
   font-family: var(--font-display);
-  font-size: clamp(1.1rem, 2.4vw, 1.5rem);
-  font-weight: 700;
-  letter-spacing: 0;
+  font-size: clamp(1.15rem, 2.2vw, 1.4rem);
+  font-weight: 400;
   line-height: 1;
+  white-space: nowrap;
 }
 .topbar__title .en {
-  font-family: var(--font-pixel);
-  font-size: 0.6rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.topbar__daily {
+  font-size: 0.8rem;
   color: var(--accent);
-  text-shadow: 0 0 10px color-mix(in oklab, var(--accent) 50%, transparent);
+  white-space: nowrap;
 }
 .topbar__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 14px var(--accent), 0 0 4px var(--accent);
-  animation: badgePulse 1.8s var(--ease) infinite;
+  display: none;
 }
 
 .topbar__spacer {
@@ -94,10 +77,25 @@
 
 .topbar__actions {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.topbar__streak {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  padding-inline: 0.3rem;
+  white-space: nowrap;
 }
 
-/* ---- Stage: main play area ---- */
+@media (max-width: 560px) {
+  .topbar__title .en {
+    display: none;
+  }
+}
+
+/* ---- Stage: board + side panel ---- */
 .stage {
   flex: 1;
   display: flex;
@@ -105,7 +103,7 @@
   align-content: flex-start;
   justify-content: center;
   gap: clamp(1rem, 3vw, 2rem);
-  padding: clamp(1.2rem, 4vw, 2.5rem);
+  padding: clamp(1rem, 4vw, 2.25rem);
   width: 100%;
   max-width: 1200px;
   margin-inline: auto;
@@ -119,89 +117,77 @@
   min-width: 0;
 }
 
-/* ---- HUD chips — recessed LED score readouts ---- */
+/* ---- HUD chips ---- */
 .hud {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.7rem;
+  gap: 0.5rem;
   justify-content: center;
 }
 .chip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.18rem;
-  min-width: 92px;
-  padding: 0.6rem 1rem;
+  gap: 0.05rem;
+  min-width: 84px;
+  padding: 0.5rem 0.9rem;
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, var(--ink-850), var(--ink-900));
-  border: 1px solid var(--line);
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: var(--ink-800);
 }
 .chip__label {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
   color: var(--text-faint);
 }
 .chip__value {
-  font-family: var(--font-mono);
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-family: var(--font-body);
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1.2;
   color: var(--text);
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
 }
 .chip__value.is-accent {
   color: var(--accent);
-  text-shadow: var(--text-glow);
 }
 
-/* ---- Side panel — arcade control deck ---- */
+/* ---- Side panel ---- */
 .panel {
-  width: min(320px, 100%);
+  width: min(300px, 100%);
+  align-self: flex-start;
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
-  padding: 1.3rem;
+  gap: 1.25rem;
+  padding: 1.1rem 1.2rem 1.3rem;
   border-radius: var(--r-lg);
-  background: linear-gradient(180deg, var(--ink-800), var(--ink-850));
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: var(--ink-800);
 }
 .panel__group {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.55rem;
 }
 .panel__legend {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  color: var(--text);
 }
 
 /* Segmented control */
 .seg {
   display: flex;
-  gap: 0.3rem;
-  padding: 0.3rem;
+  gap: 0.25rem;
+  padding: 0.25rem;
   border-radius: var(--r-sm);
   background: var(--ink-900);
-  border: 1px solid var(--line);
 }
 .seg button {
   flex: 1;
-  padding: 0.55rem 0.4rem;
-  border-radius: calc(var(--r-sm) - 4px);
-  font-family: var(--font-display);
-  font-size: 0.88rem;
-  font-weight: 700;
+  padding: 0.5rem 0.4rem;
+  border-radius: calc(var(--r-sm) - 3px);
+  font-size: 0.9rem;
+  font-weight: 500;
   color: var(--text-dim);
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .seg button:hover {
   color: var(--text);
@@ -210,10 +196,9 @@
 .seg button.is-active {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: var(--glow-sm);
 }
 
-/* Toggle row */
+/* Toggle row + switch */
 .toggle-row {
   display: flex;
   align-items: center;
@@ -223,64 +208,59 @@
 }
 .switch {
   position: relative;
-  width: 46px;
+  width: 44px;
   height: 26px;
   flex: none;
   border-radius: var(--r-pill);
   background: var(--ink-600);
-  border: 1px solid var(--line);
-  transition: background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  transition: background var(--dur-fast) var(--ease);
 }
 .switch::after {
   content: "";
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 3px;
+  left: 3px;
   width: 20px;
   height: 20px;
   border-radius: 50%;
   background: var(--text);
-  transition: transform var(--dur-fast) var(--ease);
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .switch[aria-checked="true"] {
   background: var(--accent);
-  box-shadow: var(--glow-sm);
 }
 .switch[aria-checked="true"]::after {
-  transform: translateX(20px);
+  transform: translateX(18px);
   background: var(--accent-ink);
 }
 
 .hint {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  line-height: 1.65;
   color: var(--text-dim);
-  line-height: 1.6;
 }
 .hint kbd {
-  font-family: var(--font-mono);
-  font-size: 0.84rem;
-  padding: 0.1em 0.45em;
-  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.05em 0.4em;
+  border-radius: 5px;
   background: var(--ink-700);
   border: 1px solid var(--line-strong);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
   color: var(--text);
 }
 
-/* ---- Overlay dialog (game over / win / pause) — CRT modal ---- */
+/* ---- Overlay (win / lose / pause / start) over a board ---- */
 .overlay {
   position: absolute;
   inset: 0;
+  z-index: 10;
   display: grid;
   place-items: center;
   padding: 1.5rem;
-  background: color-mix(in oklab, var(--ink-900) 76%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: color-mix(in oklab, var(--ink-900) 74%, transparent);
   opacity: 0;
   visibility: hidden;
   transition: opacity var(--dur) var(--ease), visibility var(--dur) var(--ease);
-  z-index: 10;
 }
 .overlay.is-open {
   opacity: 1;
@@ -288,69 +268,46 @@
 }
 .overlay__card {
   position: relative;
-  width: min(380px, 100%);
-  padding: 2.2rem 2rem;
+  width: min(360px, 100%);
+  padding: 1.8rem 1.6rem;
   text-align: center;
   border-radius: var(--r-lg);
-  background: linear-gradient(180deg, var(--ink-800), var(--ink-850));
-  border: 1px solid color-mix(in oklab, var(--accent) 40%, var(--line-strong));
-  box-shadow: var(--shadow-3), 0 0 44px -12px color-mix(in oklab, var(--accent) 55%, transparent);
-  overflow: hidden;
-  transform: translateY(12px) scale(0.97);
+  background: var(--ink-800);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-3);
+  transform: translateY(8px);
   transition: transform var(--dur) var(--ease-out);
 }
-/* scanline texture + top neon bar on the modal */
-.overlay__card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.5;
-  background-image: repeating-linear-gradient(
-    0deg,
-    color-mix(in oklab, var(--accent) 7%, transparent) 0 1px,
-    transparent 1px 4px
-  );
-}
-.overlay__card::after {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
-}
 .overlay.is-open .overlay__card {
-  transform: translateY(0) scale(1);
+  transform: none;
 }
 .overlay__title {
-  position: relative;
   font-family: var(--font-display);
-  font-size: 1.9rem;
-  font-weight: 700;
-  margin-bottom: 0.4rem;
+  font-size: 1.65rem;
+  font-weight: 400;
+  margin-bottom: 0.35rem;
   color: var(--text);
-  text-shadow: var(--text-glow);
 }
 .overlay__sub {
-  position: relative;
   color: var(--text-dim);
-  margin-bottom: 1.4rem;
+  margin-bottom: 1.3rem;
+}
+.overlay__sub:empty {
+  display: none;
 }
 .overlay__actions {
-  position: relative;
   display: flex;
-  gap: 0.7rem;
+  gap: 0.6rem;
   justify-content: center;
   flex-wrap: wrap;
 }
 
-/* relative wrapper so overlay can absolutely position over a board */
+/* relative wrapper so the overlay can sit over a board */
 .board-wrap {
   position: relative;
 }
 
-/* ---- Mobile control pad (D-pad) shared base ---- */
+/* ---- Touch D-pad ---- */
 .dpad {
   display: grid;
   grid-template-columns: repeat(3, 56px);
@@ -363,17 +320,14 @@
   place-items: center;
   border-radius: var(--r-sm);
   background: var(--ink-700);
-  border: 1px solid var(--line-strong);
   color: var(--text);
-  font-size: 1.3rem;
-  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease);
+  font-size: 1.2rem;
+  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .dpad button:active {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: var(--glow-sm);
-  transform: scale(0.94);
+  transform: scale(0.95);
 }
 .dpad .up { grid-area: 1 / 2; }
 .dpad .left { grid-area: 2 / 1; }

@@ -81,11 +81,11 @@ function checkResult() {
     }
     emit("solved", { moves: m });
     if (props.daily) {
-      overlay.title = "完成！";
-      overlay.sub = `用了 ${m} 步完成色彩擴散。`;
+      overlay.title = "完成";
+      overlay.sub = `用了 ${m} 步`;
     } else {
-      overlay.title = "完成！";
-      overlay.sub = `恭喜！只用 ${m} 步就填滿了。`;
+      overlay.title = "完成";
+      overlay.sub = `用了 ${m} 步`;
     }
     overlay.open = true;
     return;
@@ -93,7 +93,7 @@ function checkResult() {
   if (moves.value >= moveLimit.value) {
     lost.value = true;
     overlay.title = "步數已達上限";
-    overlay.sub = `${moveLimit.value} 步內未能全部同色，再試一次！`;
+    overlay.sub = `${moveLimit.value} 步內未能全部同色`;
     overlay.open = true;
   }
 }
@@ -175,7 +175,7 @@ const regionSet = computed(() => {
                 <button v-if="!props.daily || lost" class="btn btn--accent" @click="retry">
                   {{ lost ? "再試一次" : "再玩一次" }}
                 </button>
-                <button v-if="won && props.daily" class="btn" disabled>完成！</button>
+                <button v-if="won && props.daily" class="btn" disabled>完成</button>
               </div>
             </div>
           </div>
@@ -213,14 +213,10 @@ const regionSet = computed(() => {
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            從左上角的顏色區域開始。每次點擊下方調色盤選一個顏色，連通區域
-            會變成該色並向外吸收相鄰同色格。在步數上限內讓整片盤面變成同一色即勝利。
+            從左上角的顏色開始擴散。
+            點選調色盤顏色，連通的亮邊格子會吸收相鄰同色格。
+            步數上限內讓整片盤面同色即勝利。
           </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">小提示</span>
-          <p class="hint">邊緣亮邊的格子是目前的連通區域。優先選能吸收最多格子的顏色！</p>
         </div>
       </aside>
     </div>

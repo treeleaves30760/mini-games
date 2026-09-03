@@ -77,7 +77,7 @@ const TT_UPPER = 2;
    search, and the deepest iteration that actually finished is played. */
 export const CHESS_LEVELS: readonly ChessLevel[] = [
   { id: "easy", label: "輕量", short: "輕", depth: 1, quiescence: 0, maxNodes: 4_000, timeLimitMs: 2_000, note: "只看一步，適合熟悉規則" },
-  { id: "normal", label: "標準", short: "中", depth: 2, quiescence: 0, maxNodes: 12_000, timeLimitMs: 2_000, note: "看到你的回應" },
+  { id: "normal", label: "標準", short: "中", depth: 2, quiescence: 0, maxNodes: 12_000, timeLimitMs: 2_000, note: "會預想你的下一步" },
   { id: "hard", label: "強化", short: "強", depth: 3, quiescence: 0, maxNodes: 40_000, timeLimitMs: 3_000, note: "三層搜尋，反應仍即時" },
   { id: "expert", label: "專家", short: "專", depth: 4, quiescence: 4, maxNodes: 150_000, timeLimitMs: 5_000, note: "四層＋吃子延伸，通常不到 1 秒" },
   { id: "master", label: "大師", short: "師", depth: 5, quiescence: 6, maxNodes: 450_000, timeLimitMs: 9_000, note: "五層＋吃子延伸，複雜局面需要數秒" },

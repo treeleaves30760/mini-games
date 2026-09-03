@@ -188,7 +188,7 @@ onBeforeUnmount(() => {
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="數字推盤" title-en="15 Puzzle">
       <template #actions>
-        <button class="btn btn--accent" @click="newGame()">新遊戲</button>
+        <button class="btn btn--accent" @click="newGame()">{{ daily ? "重來" : "新遊戲" }}</button>
       </template>
     </GameTopbar>
 
@@ -240,13 +240,13 @@ onBeforeUnmount(() => {
 
           <div class="overlay" :class="{ 'is-open': overlayOpen }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ isRecord ? "新紀錄！" : "完成！" }}</h2>
+              <h2 class="overlay__title">{{ isRecord ? "新紀錄" : "完成" }}</h2>
               <p class="overlay__sub">
-                {{ N }}×{{ N }} · {{ moves }} 步 · {{ timeStr }}{{ isRecord ? "（最佳）" : "" }}
+                {{ N }}×{{ N }}，{{ moves }} 步，{{ timeStr }}{{ isRecord ? "（最佳）" : "" }}
               </p>
               <div class="overlay__actions">
                 <button v-if="!daily" class="btn btn--accent" @click="newGame()">再來一局</button>
-                <span v-else class="hint">今日挑戰完成！</span>
+                <span v-else class="hint">今日挑戰完成</span>
               </div>
             </div>
           </div>
@@ -271,16 +271,9 @@ onBeforeUnmount(() => {
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            點擊與空格同列或同行的數字磚，整排磚塊會向空格滑動。<br />
-            也可用方向鍵控制（鍵盤箭頭 = 磚塊滑入方向的反方向）。<br />
+            點擊與空格同列/同行的磚塊，整排會滑向空格。<br />
+            也可用方向鍵操作。<br />
             將數字由小到大排列、空格在右下角即過關。
-          </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">提示</span>
-          <p class="hint">
-            先固定最上方兩行，再固定最左兩列，最後處理右下角的 2×2 區塊。
           </p>
         </div>
       </aside>

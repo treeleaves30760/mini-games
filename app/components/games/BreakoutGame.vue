@@ -34,7 +34,7 @@ const best = ref(0);
 const lives = ref(LIVES_START);
 const lvl = ref(1);
 const paused = ref(false);
-const overlay = reactive({ open: true, mode: 'start', title: '打磚塊', sub: '移動滑鼠 / 手指拖曳控制板子，空白鍵發球。', action: '開始遊戲' });
+const overlay = reactive({ open: true, mode: 'start', title: '打磚塊', sub: '滑鼠或拖曳移動板子，空白鍵發球。', action: '開始' });
 
 // non-reactive state
 let ctx = null;
@@ -126,7 +126,7 @@ function restart() { reset(); start(); }
 function togglePause() {
   if (!started || over) return;
   paused.value = !paused.value;
-  if (paused.value) showOverlay('resume', '已暫停', '', '繼續遊戲');
+  if (paused.value) showOverlay('resume', '已暫停', '', '繼續');
   else overlay.open = false;
 }
 
@@ -198,11 +198,11 @@ function update(dt) {
         localStorage.setItem(BEST_KEY, String(best.value));
       }
       emit('solved', { score: score.value });
-      showOverlay('win', '恭喜通關！', `最終得分 ${score.value}`, '再玩一次');
+      showOverlay('win', '通關', `得分 ${score.value}，最佳 ${best.value}`, '再玩一次');
       over = true; started = false;
     } else {
       initLevel(lvl.value + 1);
-      showOverlay('next', `第 ${lvl.value} 關`, '所有磚塊已清除！繼續下一關。', '繼續');
+      showOverlay('next', `第 ${lvl.value} 關`, `得分 ${score.value}`, '繼續');
     }
   }
 
@@ -221,7 +221,7 @@ function gameOver() {
     best.value = score.value;
     localStorage.setItem(BEST_KEY, String(best.value));
   }
-  showOverlay('restart', '遊戲結束', `得分 ${score.value}　·　最佳 ${best.value}`, '再玩一次');
+  showOverlay('restart', '遊戲結束', `得分 ${score.value}，最佳 ${best.value}`, '再玩一次');
 }
 
 // ---- draw ----
@@ -379,7 +379,7 @@ onMounted(() => {
   best.value = +(localStorage.getItem(BEST_KEY) || 0);
   reset();
   resize();
-  showOverlay('start', '打磚塊', '移動滑鼠 / 手指拖曳控制板子，空白鍵發球。', '開始遊戲');
+  showOverlay('start', '打磚塊', '滑鼠或拖曳移動板子，空白鍵發球。', '開始');
   window.addEventListener('resize', resize);
   window.addEventListener('keydown', onKey);
   window.addEventListener('keyup', onKeyUp);
@@ -457,19 +457,19 @@ onBeforeUnmount(() => {
 
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">操作方式</span>
-          <p class="hint">
-            移動板子：<kbd>←</kbd><kbd>→</kbd> 或滑鼠<br />
-            發球：<kbd>空白鍵</kbd> 或點擊畫面<br />
-            暫停：<kbd>P</kbd>
-          </p>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
             3 條命，球落地失去一命。<br />
             灰色磚塊需打 2 次。<br />
             共 {{ 3 }} 關，全部清除即通關。
+          </p>
+        </div>
+        <div class="panel__group">
+          <span class="panel__legend">操作</span>
+          <p class="hint">
+            移動板子：<kbd>←</kbd><kbd>→</kbd> 或滑鼠<br />
+            發球：<kbd>空白鍵</kbd> 或點擊畫面<br />
+            暫停：<kbd>P</kbd>
           </p>
         </div>
       </aside>

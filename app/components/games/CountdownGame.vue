@@ -111,7 +111,7 @@ function resetCards() {
 function checkWin() {
   if (!puzzle.value || !isCountdownWon(cards.value, puzzle.value.target)) return;
   won.value = true;
-  overlay.title = "精準命中！";
+  overlay.title = "命中";
   overlay.sub = `${cards.value[0].expr} = ${puzzle.value.target}`;
   overlay.open = true;
   emit("solved", {});
@@ -126,7 +126,7 @@ onMounted(generate);
       <template #actions>
         <button class="btn" :disabled="history.length === 0" @click="undo">上一步</button>
         <button class="btn" @click="resetCards">重設</button>
-        <button class="btn btn--accent" @click="generate">新題目</button>
+        <button class="btn btn--accent" @click="generate">{{ daily ? "重來" : "新題目" }}</button>
       </template>
     </GameTopbar>
 
@@ -205,9 +205,11 @@ onMounted(generate);
           </div>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            每張數字卡都要用一次，透過四則運算把所有卡片合併成目標值。減法不能得到負數，除法必須整除。
+            選兩張卡與一個運算子，合併成新卡。
+            減法不能得負數，除法必須整除。
+            所有卡合併成一張等於目標值即成功。
           </p>
         </div>
         <div class="panel__group">

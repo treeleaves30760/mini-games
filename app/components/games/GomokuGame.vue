@@ -65,10 +65,10 @@ function resolveGame(b) {
     if (win.winner === BLACK) {
       tally.win++; saveTally();
       emit("solved", {});
-      overlay.title = "你贏了！"; overlay.sub = "黑棋五子連線，恭喜！";
+      overlay.title = "你贏了"; overlay.sub = "黑棋五子連線。";
     } else {
       tally.loss++; saveTally();
-      overlay.title = "電腦贏了"; overlay.sub = "白棋五子連線，再接再厲！";
+      overlay.title = "電腦贏了"; overlay.sub = "白棋五子連線。";
     }
     overlay.open = true;
     return true;
@@ -76,7 +76,7 @@ function resolveGame(b) {
   if (isBoardFull(b)) {
     isDraw.value = true; gameOver.value = true;
     tally.draw++; saveTally();
-    overlay.title = "平局！"; overlay.sub = "棋盤填滿，不分勝負。";
+    overlay.title = "平局"; overlay.sub = "棋盤填滿，不分勝負。";
     overlay.open = true;
     return true;
   }
@@ -181,7 +181,7 @@ function toggleRenju() {
 
 function flashForbidden(r, c, reason) {
   forbiddenFlash.value = { r, c };
-  forbiddenMsg.value = `禁手！黑棋不可下「${reason}」`;
+  forbiddenMsg.value = `禁手：黑棋不可下「${reason}」`;
   clearTimeout(forbiddenTimer);
   forbiddenTimer = setTimeout(() => {
     forbiddenFlash.value = null;
@@ -236,7 +236,7 @@ const statusText = computed(() => {
   if (forbiddenMsg.value) return forbiddenMsg.value;
   if (gameOver.value) {
     if (isDraw.value) return "平局";
-    return winner.value === BLACK ? "黑棋獲勝！" : "白棋獲勝";
+    return winner.value === BLACK ? "黑棋獲勝" : "白棋獲勝";
   }
   if (aiThinking.value) return "電腦思考中…";
   return "黑棋落子";
@@ -347,7 +347,7 @@ const statusText = computed(() => {
       <!-- Side Panel -->
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
             15×15 棋盤，你執黑，電腦執白。<br />
             率先連成五子（橫、直、斜）者獲勝。<br />
@@ -356,7 +356,7 @@ const statusText = computed(() => {
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">禁手規則</span>
+          <span class="panel__legend">禁手</span>
           <div class="toggle-row">
             <span>黑棋禁手</span>
             <button
@@ -368,18 +368,8 @@ const statusText = computed(() => {
             ></button>
           </div>
           <p class="hint">
-            開啟後，先手黑棋不得下出
-            <strong style="color: var(--text)">三三</strong>、<strong style="color: var(--text)">四四</strong>
-            或 <strong style="color: var(--text)">長連</strong>（六子以上），必須改用四三等手段取勝。
-            盤面上的 <span style="color:#ff5d6c">✕</span> 即為禁著點。
-          </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">功能</span>
-          <p class="hint">
-            <strong style="color: var(--text)">悔棋</strong>：撤回你和電腦各一步。<br />
-            <strong style="color: var(--text)">重新開始</strong>：清空棋盤。
+            開啟後，黑棋不得下三三、四四或長連。<br />
+            盤面上的 <span style="color:#ff5d6c">✕</span> 是禁著點。
           </p>
         </div>
 

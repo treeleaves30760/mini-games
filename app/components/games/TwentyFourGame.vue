@@ -133,13 +133,9 @@ function handleWin() {
   gameWon.value = true;
   solvedCount.value++;
   try { localStorage.setItem(SAVE_KEY, String(solvedCount.value)); } catch (_) {}
-  if (props.daily) {
-    overlay.title = '完成！';
-    overlay.sub = `成功湊到 ${target.value}！`;
-  } else {
-    overlay.title = '答對了！';
-    overlay.sub = `太厲害，成功湊到 ${target.value}！`;
-  }
+  const expr = cards.value[0] ? cards.value[0].display : '';
+  overlay.title = props.daily ? '完成' : '答對了';
+  overlay.sub = `${expr} = ${target.value}`;
   overlay.open = true;
   emit('solved', {});
 }
@@ -177,7 +173,7 @@ onMounted(() => {
 
 <template>
   <div class="game-page" :style="{ '--accent': accent }">
-    <GameTopbar title="24點" title-en="Make 24">
+    <GameTopbar title="24 點" title-en="Make 24">
       <template #actions>
         <button class="btn" @click="undo">上一步</button>
         <button class="btn" @click="resetCards">重設</button>
@@ -246,7 +242,7 @@ onMounted(() => {
             <!-- Hint: step instructions -->
             <div class="tf-instruction">
               <template v-if="gameWon">
-                <span class="tf-instr-win">已完成！</span>
+                <span class="tf-instr-win">已完成</span>
               </template>
               <template v-else-if="cards.length === 1 && !isExactTarget(cards[0])">
                 <span class="tf-instr-fail">結果是 {{ ratToDisplay(cards[0].value) }}，不是 {{ target }}。請重設再試。</span>
@@ -307,8 +303,8 @@ onMounted(() => {
         <div class="panel__group">
           <span class="panel__legend">操作</span>
           <div style="display:flex;flex-direction:column;gap:0.5rem;">
-            <button class="btn" style="width:100%" @click="undo">上一步 Undo</button>
-            <button class="btn" style="width:100%" @click="resetCards">重設 Reset</button>
+            <button class="btn" style="width:100%" @click="undo">上一步</button>
+            <button class="btn" style="width:100%" @click="resetCards">重設</button>
             <button class="btn" style="width:100%" @click="revealSolution">
               {{ showSolution ? '已顯示解答' : '提示 / 顯示解答' }}
             </button>
@@ -319,10 +315,10 @@ onMounted(() => {
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            用 4 張數字牌做加、減、乘、除，讓最後結果等於上方的<b>目標數字</b>（24、36、48、60）。<br />
+            用 4 張牌做加減乘除，湊出上方的<b>目標數字</b>。<br />
             1. 點選一張數字牌<br />
             2. 點選運算符號<br />
-            3. 點選第二張數字牌，兩張合併為新牌<br />
+            3. 點選第二張數字牌，合併成新牌<br />
             重複到只剩一張牌為止。
           </p>
         </div>

@@ -117,7 +117,7 @@ function checkWin() {
   for (let k = 0; k < 81; k++) if (state.values[k] !== solution[k]) return;
   state.solved = true;
   stopTimer();
-  overlay.sub = `難度 ${DIFF[difficulty.value].label}　·　用時 ${fmt(time.value)}　·　錯誤 ${state.mistakes}`;
+  overlay.sub = `難度${DIFF[difficulty.value].label}，用時 ${fmt(time.value)}，錯誤 ${state.mistakes}`;
   overlay.open = true;
 }
 
@@ -212,15 +212,15 @@ onBeforeUnmount(() => {
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Level</span>
+            <span class="chip__label">難度</span>
             <span class="chip__value is-accent">{{ DIFF[difficulty].label }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Mistakes</span>
+            <span class="chip__label">錯誤</span>
             <span class="chip__value">{{ state.mistakes }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Time</span>
+            <span class="chip__label">時間</span>
             <span class="chip__value">{{ fmt(time) }}</span>
           </div>
         </div>
@@ -244,7 +244,7 @@ onBeforeUnmount(() => {
 
           <div class="overlay" :class="{ 'is-open': overlay.open }">
             <div class="overlay__card">
-              <h2 class="overlay__title">完成！</h2>
+              <h2 class="overlay__title">完成</h2>
               <p class="overlay__sub">{{ overlay.sub }}</p>
               <div class="overlay__actions">
                 <button class="btn btn--accent" @click="newGame(difficulty)">再來一局</button>
@@ -279,7 +279,6 @@ onBeforeUnmount(() => {
               {{ d.label }}
             </button>
           </div>
-          <p class="hint">切換難度會開始一局新遊戲。</p>
         </div>
 
         <div class="panel__group">
@@ -294,14 +293,14 @@ onBeforeUnmount(() => {
               @click="state.notesMode = !state.notesMode"
             />
           </div>
-          <p class="hint">筆記模式下輸入數字會記為候選小字，方便推理。</p>
+          <p class="hint">輸入的數字記為候選小字。</p>
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">操作方式</span>
+          <span class="panel__legend">操作</span>
           <p class="hint">
             選格：點擊或方向鍵 <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><br />
-            填入：<kbd>1</kbd>–<kbd>9</kbd>　清除：<kbd>0</kbd> / <kbd>⌫</kbd><br />
+            填入：<kbd>1</kbd>–<kbd>9</kbd>，清除：<kbd>0</kbd> / <kbd>⌫</kbd><br />
             切換筆記：<kbd>N</kbd>
           </p>
         </div>

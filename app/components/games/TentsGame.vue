@@ -251,8 +251,8 @@ onMounted(() => { initGame(); });
           <!-- Win overlay -->
           <div class="overlay" :class="{ 'is-open': showOverlay }">
             <div class="overlay__card">
-              <h2 class="overlay__title">紮營完成！</h2>
-              <p class="overlay__sub">每棵樹都配好帳篷了！</p>
+              <h2 class="overlay__title">完成</h2>
+              <p class="overlay__sub">帳篷 {{ tentCount }} / {{ treeCount }}</p>
               <div class="overlay__actions">
                 <button v-if="!props.daily" class="btn btn--accent" @click="newPuzzle">再來一局</button>
                 <button class="btn" @click="showOverlay = false">關閉</button>
@@ -278,11 +278,11 @@ onMounted(() => { initGame(); });
       <!-- Side panel -->
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            每棵樹旁要紮一頂帳篷（上下左右相鄰）。帳篷彼此不能相鄰（含斜角），
-            每行每列的帳篷數要等於邊上的數字。點格子可切換
-            帳篷／草地標記。
+            每棵樹的上下左右需有一頂帳篷。<br />
+            帳篷不能相鄰（含斜角）。<br />
+            每行每列的帳篷數要等於邊上數字。
           </p>
         </div>
 
@@ -317,7 +317,7 @@ onMounted(() => { initGame(); });
           <span class="panel__legend">操作</span>
           <p class="hint">
             點擊空格：放置帳篷<br/>
-            再次點擊：改為草地標記<br/>
+            再次點擊：改為草地<br/>
             再次點擊：清除格子
           </p>
         </div>

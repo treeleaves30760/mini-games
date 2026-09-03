@@ -96,7 +96,7 @@ const searchText = computed(() => {
   const info = aiProgress.value;
   if (!info) return aiThinking.value ? "搜尋中…" : "";
   const nodes = info.nodes.toLocaleString("en-US");
-  return `第 ${info.depth} 層 · ${nodes} 節點 · ${(info.timeMs / 1000).toFixed(1)}s`;
+  return `第 ${info.depth} 層，${nodes} 節點，${(info.timeMs / 1000).toFixed(1)}s`;
 });
 
 watch(
@@ -319,7 +319,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="game-page" :style="{ '--accent': accent }">
-    <GameTopbar title="日本將棋" title-en="Shogi">
+    <GameTopbar title="將棋" title-en="Shogi">
       <template #actions>
         <button class="btn" :disabled="!canUndo" @click="undoMove">悔棋</button>
         <button class="btn btn--accent" @click="restart">重新開始</button>
@@ -431,7 +431,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">AI 難度</span>
+          <span class="panel__legend">電腦強度</span>
           <div class="levels">
             <button
               v-for="level in SHOGI_LEVELS"
@@ -445,16 +445,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <p class="hint">{{ activeLevel.note }}</p>
-          <p class="hint hint--engine">{{ engineText }}</p>
           <p class="search-line" v-if="searchText">{{ searchText }}</p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">引擎選擇</span>
-          <p class="hint">
-            規則由 <strong style="color: var(--text)">tsshogi</strong> 驗證。將棋頂尖開源引擎以
-            YaneuraOu/Suisho 系列最具代表性，但最新版也依賴 NNUE；本頁內建純 rule-based 搜尋 AI。
-          </p>
         </div>
 
         <div class="panel__group">

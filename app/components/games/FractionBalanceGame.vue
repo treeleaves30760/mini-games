@@ -69,8 +69,8 @@ function checkWin() {
   nextTick(() => {
     if (!puzzle.value || !isFractionBalanceSolved(puzzle.value, selectedIds.value, signs.value)) return;
     won.value = true;
-    overlay.title = "天平平衡！";
-    overlay.sub = `右側合計 ${formatFraction(puzzle.value.target)}。`;
+    overlay.title = "天平平衡";
+    overlay.sub = `右側合計 ${formatFraction(puzzle.value.target)}`;
     overlay.open = true;
     emit("solved", {});
   });
@@ -83,7 +83,7 @@ onMounted(generate);
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="分數天平" title-en="Fraction Balance">
       <template #actions>
-        <button class="btn btn--accent" @click="generate">新題目</button>
+        <button class="btn btn--accent" @click="generate">{{ daily ? "重來" : "新題目" }}</button>
       </template>
     </GameTopbar>
 
@@ -173,9 +173,10 @@ onMounted(generate);
           </div>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            從卡片中選出指定數量的分數，讓右側總和等於左側目標。困難以上會出現負分數與減法。
+            選出指定數量的分數卡，讓右側總和等於左側目標。
+            困難以上會出現負分數與減法。
           </p>
         </div>
       </aside>

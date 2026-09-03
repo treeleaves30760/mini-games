@@ -1,150 +1,129 @@
-# Playground — Web Mini-Games Collection
+# 遊樂場 Playground — web mini-games
 
-A modern, clean, and polished collection of web mini-games, built with **Vue 3 + Nuxt 4**, statically generated (SSG) and deployed to **GitHub Pages**.
+A collection of browser mini-games in Traditional Chinese, built with **Vue 3 + Nuxt 4**, statically generated and deployed to **GitHub Pages**. No accounts, no install.
 
-Live demo: https://treeleaves30760.github.io/mini-games/
+Live: https://treeleaves30760.github.io/mini-games/
 
-It currently features **36 games** plus a **Daily Challenge**, grouped by category:
+**44 games** plus a **Daily Challenge**, grouped on the home page:
 
-| Category | Games |
+| Group | Games |
 | --- | --- |
-| Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents |
-| Board (vs AI) | Gomoku (with Renju forbidden-move rules), Reversi, Tic-Tac-Toe, Dots & Boxes, Chess, Shogi (the last two offer five AI levels, 1–5 ply — see below) |
-| Numbers | 2048, 15 Puzzle, Make 24 (variable target), Mastermind |
-| Word | Word Guess, Japanese Word Guess (hiragana Wordle of 58 words; on solving, reveals each word's Chinese/English meaning, a usage note, and two example sentences, with 🔊 audio playback via the Web Speech API), Word Search |
-| Memory | Memory, Simon |
-| Arcade | Snake, Tetris, Breakout, Match 3, Whack-a-Mole |
-| Maze | Maze, 3D Maze (Three.js) |
-| Classic | Klotski, Tower of Hanoi, Sokoban |
+| 邏輯 Logic | Sudoku, Minesweeper, Nonogram, Lights Out, Flood It, Binario, One Line, Shikaku, Arrow Out, Pipes, Hashi, Light Up, Tents |
+| 棋類 Board (vs computer) | Gomoku (with Renju forbidden moves), Reversi, Chess, Shogi, Tic-Tac-Toe, Dots & Boxes |
+| 數學 Math | 2048, 15 Puzzle, Make 24, Mastermind, KenKen, Equation Maze, Fraction Balance, Prime Hunter, Countdown Numbers, Function Runner |
+| 文字 Word | Word Guess (5–8 letters, with meanings), Japanese Word Guess (hiragana, with meanings, examples and speech), Word Search |
+| 記憶 Memory | Memory, Simon |
+| 街機 Arcade | Snake, Tetris, Breakout, Match 3, Whack-a-Mole |
+| 經典 Classic | Klotski, Tower of Hanoi, Sokoban, Maze, 3D Maze (Three.js) |
 
 ### Daily Challenge
 
-`/daily` uses **the current date as a seed** every day to pick one game from a curated, reproducible set of puzzles and generate that day's challenge — so **every player in the world gets the same puzzle on the same day**. Completing it extends your **streak**, and you can share your result with one tap.
+`/daily` picks one game per day from a fixed rotation and seeds it with the date, so **everyone gets the same puzzle on the same day**. Solving it extends a streak kept in `localStorage`; the top bar shows the date, streak and a share button.
 
-The core is the shared seeded-RNG utility `app/utils/rng.ts` (`makeRng(seed)` / `todaySeed()`). Any game can join the daily rotation simply by using it in place of `Math.random`, accepting `seed` / `daily` props, and emitting `solved` when the player wins.
+The pieces:
 
-### Board-Game AI Levels
+- `app/utils/rng.ts` — seeded RNG (`makeRng(seed)`, `todaySeed()`, `dayIndex()`).
+- `app/composables/useDaily.ts` — the rotation list, today's pick, streak read/write.
+- `app/pages/daily.vue` — renders today's game component with `seed` / `daily` props and provides the status to `GameTopbar`.
 
-Chess and Shogi share one search design in `app/games/chess.ts` and `app/games/shogi.ts`: a
-rule-based negamax (alpha-beta) with iterative deepening, a transposition table, killer/history
-move ordering, and a capture-driven quiescence search on the top two levels.
+Any game can join the rotation by generating its puzzle with `makeRng(props.seed)`, hiding its difficulty controls when `daily` is true, and emitting `solved` on a win.
+
+### Board-game AI
+
+Chess and Shogi share one search design (`app/games/chess.ts`, `app/games/shogi.ts`): negamax with alpha-beta, iterative deepening, a transposition table, killer/history move ordering, and a capture-only quiescence search on the top two levels.
 
 | Level | Depth | Quiescence | Typical reply |
 | --- | --- | --- | --- |
-| 輕量 Light | 1 ply | — | instant |
-| 標準 Standard | 2 ply | — | instant |
-| 強化 Strong | 3 ply | — | instant |
-| 專家 Expert | 4 ply | 4 ply | well under a second |
-| 大師 Master | 5 ply | 6 ply | a fraction of a second, up to a few seconds in dense positions |
+| 輕量 | 1 ply | — | instant |
+| 標準 | 2 ply | — | instant |
+| 強化 | 3 ply | — | instant |
+| 專家 | 4 ply | 4 ply | well under a second |
+| 大師 | 5 ply | 6 ply | up to a few seconds in dense positions |
 
-Two budgets bound the search: a node count and a wall clock. The clock is the one that matters — a
-Shogi position where both sides hold several pieces in hand generates 150+ legal drops per node, so
-the same node count can cost 100x more time than in the opening. Whichever budget runs out first
-stops the search and the deepest *completed* iteration is played, so the AI always answers.
+A node budget and a wall clock bound every search; whichever runs out first stops it and the deepest completed iteration is played. The search runs in a **Web Worker** (`app/workers/`) so the board stays responsive; `useBoardAI` falls back to the main thread where workers are unavailable.
 
-The search runs in a **Web Worker** (`app/workers/`), so the board stays interactive while the deep
-levels think, and the panel reports live progress (depth, nodes, elapsed). Where workers are
-unavailable, `useBoardAI` falls back to computing on the main thread.
+Chess searches its own 0x88 board (verified against `chess.js` and published perft counts in `tests/games/chess.test.ts`) because generating moves through `chess.js` is too slow for deep search. Shogi keeps `tsshogi` as the rules authority.
 
-Chess does not search on `chess.js`: generating moves there also builds SAN strings, which is far
-too slow for deep search. The AI uses its own 0x88 board, verified against `chess.js` and the
-published perft counts in `tests/games/chess.test.ts`. Shogi keeps `tsshogi` as the rules authority.
+## Design
 
-## Features
+- **Dark, warm-neutral chrome; colour comes from the games.** Each game has one accent colour, used for its icon, its selected states and its primary button. Nothing else on the page is coloured.
+- **Two typefaces.** Huninn (粉圓) for the site name, headings and game names; Noto Sans TC for everything functional, with tabular numerals for scores and timers.
+- **Home page = the games.** A one-line lead, the daily strip, then every game as a tile (icon, name, one short line) grouped by category. No hero, no feature cards.
+- **Game page = the board.** Shared top bar (back, title, actions), HUD chips, the board, and a side panel limited to controls, rules and keys.
+- Motion only in response to actions; `prefers-reduced-motion` respected; keyboard, mouse and touch input everywhere.
 
-- **Pure static, instant play**: `nuxt generate` produces fully static files — no server, no install.
-- **Daily challenge engine**: a date seed generates a "same puzzle worldwide" level, with streaks tracked locally in the browser.
-- **Single registry-driven gallery**: every game lives in `app/composables/useGames.ts`; add one entry to ship it, and the home page provides category filtering.
-- **Unified design system**: shared design tokens (colors, fonts, spacing) and a common game shell give a consistent look while each game keeps its own accent color.
-- **Responsive and mobile-friendly**: keyboard, mouse, and touch (swipe / tap / D-pad) input are all supported.
-- **Accessibility details**: semantic structure, `prefers-reduced-motion`, and keyboard operation support.
-
-## Tech Stack
+## Tech stack
 
 | Item | Choice |
 | --- | --- |
 | Framework | Vue 3 (`<script setup>`) + Nuxt 4 |
-| Render mode | Static site generation (SSG, `nuxt generate`) |
-| 3D | Three.js (dynamically imported on the client only) |
-| Styling | Native CSS + design tokens (CSS variables), no UI library |
-| Fonts | Bricolage Grotesque / Noto Sans TC / Space Mono (Google Fonts) |
-| Deployment | GitHub Pages (automated via GitHub Actions) |
+| Rendering | Static site generation (`nuxt generate`) |
+| 3D | Three.js, imported on the client only |
+| Styling | Plain CSS with design tokens (CSS variables), no UI library |
+| Fonts | Huninn, Noto Sans TC (Google Fonts) |
+| Tests | Vitest, covering the game logic in `app/games` and `app/utils` |
+| Deployment | GitHub Pages via GitHub Actions |
 
-## Local Development
+## Local development
 
-Requirements: Node.js 20 or later and [pnpm](https://pnpm.io/).
+Requires Node.js 20+ and [pnpm](https://pnpm.io/).
 
 ```bash
 pnpm install       # install dependencies
 pnpm dev           # dev server (http://localhost:3000)
-pnpm generate      # generate the static site into .output/public
+pnpm test          # run the logic tests
+pnpm generate      # build the static site into .output/public
 pnpm preview       # preview the production build
 ```
 
-Preview the static output: `pnpm generate && pnpm dlx serve .output/public`
-
-## Project Structure
+## Project structure
 
 ```
 .
-├── nuxt.config.ts                 # baseURL, github_pages preset, global CSS, fonts, component config
+├── nuxt.config.ts                 # baseURL, github_pages preset, global CSS, fonts
 ├── app/
-│   ├── app.vue                    # root component (global background + layout + page)
-│   ├── assets/css/                # design system: tokens / base / ui / home
-│   ├── layouts/default.vue        # home layout (site header / footer)
+│   ├── app.vue                    # root: layout + page
+│   ├── assets/css/                # tokens / base / ui (game shell) / home
+│   ├── layouts/default.vue        # home layout (header / footer)
 │   ├── components/
-│   │   ├── AppBackground.vue      # global ambient background + grain texture
-│   │   ├── GameCard.vue           # home-page game card
-│   │   ├── GameTopbar.vue         # shared game-page top bar (back / title / actions)
-│   │   └── games/                 # 36 game components (SnakeGame.vue, SudokuGame.vue,
-│   │                              #   MinesweeperGame.vue, GomokuGame.vue ... Maze3DGame.vue)
-│   ├── composables/useGames.ts    # game registry + categories (single source of truth)
+│   │   ├── GameCard.vue           # home-page game tile
+│   │   ├── GameTopbar.vue         # shared game top bar (back / title / actions / daily status)
+│   │   └── games/                 # one component per game (SnakeGame.vue, SudokuGame.vue, …)
+│   ├── composables/
+│   │   ├── useGames.ts            # game registry + home groups (single source of truth)
+│   │   ├── useDaily.ts            # daily rotation, today's pick, streak storage
+│   │   └── useBoardAI.ts          # worker bridge for the chess / shogi search
+│   ├── games/                     # pure game logic per game (tested)
 │   ├── pages/
-│   │   ├── index.vue              # home page (hero + category filter + game wall)
-│   │   ├── daily.vue              # Daily Challenge (date-picked game, seeded, streak tracking)
-│   │   └── games/                 # one route per game (snake / sudoku / minesweeper / gomoku ...)
-│   ├── utils/
-│   │   ├── sudoku.ts              # Sudoku generator / solver
-│   │   └── rng.ts                 # seeded RNG (makeRng / todaySeed) — the basis of the Daily Challenge
-│   └── workers/                   # Web Workers: chess-ai.ts / shogi-ai.ts (deep search off the main thread)
+│   │   ├── index.vue              # home
+│   │   ├── daily.vue              # Daily Challenge
+│   │   └── games/                 # one route per game
+│   ├── utils/                     # rng.ts (seeded RNG), sudoku.ts (generator / solver)
+│   └── workers/                   # chess-ai.ts / shogi-ai.ts
+├── tests/                         # Vitest suites for app/games and app/utils
 ├── public/favicon.svg
-└── .github/workflows/deploy.yml   # GitHub Pages automatic deployment
+└── .github/workflows/deploy.yml   # GitHub Pages deployment
 ```
 
-Note: because the component config is set to `components: [{ path: '~/components', pathPrefix: false }]`, the tag for `components/games/SnakeGame.vue` is simply `<SnakeGame/>` (no directory prefix).
+Components are registered without a directory prefix (`components: [{ path: '~/components', pathPrefix: false }]`), so `components/games/SnakeGame.vue` is used as `<SnakeGame/>`.
 
-## How to Add a Game
+## Adding a game
 
-### A. Native Vue game (recommended)
+1. Put the game logic in `app/games/<name>.ts` and a test in `tests/games/<name>.test.ts`.
+2. Add a component under `app/components/games/`, e.g. `MyGame.vue`:
+   - Root node: `<div class="game-page" :style="{ '--accent': '#your-colour' }">`.
+   - Use the shared shell: `<GameTopbar title="中文名" title-en="English">` with buttons in its `#actions` slot, then `.stage` → `.stage__main` (HUD `.hud` / `.chip`, the board in `.board-wrap` with an `.overlay`) and an `<aside class="panel">` with `.panel__group` blocks (`.panel__legend` + controls or a `.hint`).
+   - Keep the panel to controls, rules and keys. No tips, trivia or tech notes.
+3. Add a page under `app/pages/games/` with `definePageMeta({ layout: false })`, a `useHead` title, and the component.
+4. Add one entry to `GAMES` in `app/composables/useGames.ts`: `id`, `title`, `titleEn`, a `desc` of at most about ten characters, `accent`, `category` (one of `CATEGORIES`), `to`, and an inline SVG `icon` that uses `var(--accent)`. The home page picks it up.
+5. To make it daily-ready: accept `seed` / `daily` props, build the puzzle with `makeRng(props.seed)`, regenerate in `watch(() => props.seed, …)`, emit `solved` on a win, hide difficulty controls when `daily` is true, then add its id to `DAILY_ROTATION` in `app/composables/useDaily.ts` and its component to `COMPONENTS` in `app/pages/daily.vue`.
 
-1. Add a component under `app/components/games/`, e.g. `Game2048.vue`.
-   - Use `<div class="game-page" :style="{ '--accent': '#your-accent' }">` as the root node.
-   - Include the shared shell: `<GameTopbar title="..." title-en="...">`, `.stage`, `.panel`, etc.
-2. Add a page under `app/pages/games/`, set `definePageMeta({ layout: false })`, set the title with `useHead`, and place your game component in the template.
-3. Add one entry to the `GAMES` array in `app/composables/useGames.ts` with `available: true`, along with `to`, `accent`, `category`, and `icon`. The home-page card wall grows the new card automatically.
-
-> **Make a game daily-ready**: accept `seed` / `daily` props, generate the puzzle with `const rng = makeRng(props.seed)` (replacing `Math.random`), regenerate via `watch(() => props.seed, ...)`, and emit `solved` on a win (`emit('solved', {...})`). When `daily` is true, hide difficulty/new-puzzle controls. Finally, add it to the `ROTATION` in `app/pages/daily.vue`.
-
-### B. 3D game (Three.js)
-
-See `Maze3DGame.vue`: dynamically load Three.js inside `onMounted` with `await import('three')` (ensuring it runs only on the client and does not affect SSG), and release resources in `onBeforeUnmount` (`renderer.dispose()`, `cancelAnimationFrame`).
-
-### C. Packaged build (Pygame / Unity)
-
-1. Place the exported WebGL / pygbag build (including its `index.html`) under `public/embeds/<game>/`.
-2. Create an embed page that loads the folder with an `<iframe>` and applies the `GameTopbar` shell.
-3. Add the game to the registry (`type: "iframe"`).
-
-Because the `github_pages` preset is enabled and outputs `.nojekyll`, any static file under `public/` is deployed as-is.
+For a Three.js game see `Maze3DGame.vue`: import Three inside `onMounted` (`await import('three')`) and release the renderer in `onBeforeUnmount`. For a packaged WebGL / pygbag build, drop it under `public/embeds/<game>/`, embed it with an `<iframe>` inside the game shell, and register it with `type: "iframe"`.
 
 ## Deploying to GitHub Pages
 
-A GitHub Actions workflow is included (`.github/workflows/deploy.yml`): pushing to `main` automatically runs `pnpm install --frozen-lockfile` → `pnpm generate` → deploy to Pages. The base URL is derived from the repository name by the workflow (`NUXT_APP_BASE_URL=/<repo>/`).
-
-First-time setup: go to the repo's **Settings → Pages → Source** and select **GitHub Actions**.
-
-If you use a custom domain, or the repo is named `<account>.github.io`, change `NUXT_APP_BASE_URL` in `deploy.yml` to `/`.
+Pushing to `main` runs `.github/workflows/deploy.yml`: `pnpm install --frozen-lockfile` → `pnpm generate` → deploy. The base URL is derived from the repository name (`NUXT_APP_BASE_URL=/<repo>/`). First-time setup: **Settings → Pages → Source → GitHub Actions**. For a custom domain or a `<account>.github.io` repo, set `NUXT_APP_BASE_URL` to `/` in the workflow.
 
 ## License
 
-MIT — free to use, modify, and extend.
+MIT

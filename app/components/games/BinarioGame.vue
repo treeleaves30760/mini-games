@@ -88,11 +88,11 @@ function checkWin() {
   }
   emit("solved", { time: t });
   if (props.daily) {
-    overlay.title = "完成！";
-    overlay.sub = `耗時 ${formatTime(t)} 完成二進位謎題。`;
+    overlay.title = "今日挑戰完成";
+    overlay.sub = `耗時 ${formatTime(t)}`;
   } else {
-    overlay.title = "解開了！";
-    overlay.sub = `完成！耗時 ${formatTime(t)}。`;
+    overlay.title = "完成";
+    overlay.sub = `耗時 ${formatTime(t)}`;
   }
   overlay.open = true;
 }
@@ -209,7 +209,7 @@ onBeforeUnmount(() => clearInterval(timerInterval));
               <p class="overlay__sub">{{ overlay.sub }}</p>
               <div class="overlay__actions">
                 <button v-if="!props.daily" class="btn btn--accent" @click="generate">再來一局</button>
-                <button v-else class="btn" disabled>完成！</button>
+                <button v-else class="btn" disabled>完成</button>
               </div>
             </div>
           </div>
@@ -231,20 +231,24 @@ onBeforeUnmount(() => clearInterval(timerInterval));
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            每格填入 <strong>0</strong> 或 <strong>1</strong>。<br />
-            每行和每列中 0 和 1 的數量必須相等。<br />
-            同一行或列中不能有三個連續相同的數字。<br />
-            每行和每列都必須是唯一的。
+            每格填入 <strong>0</strong> 或 <strong>1</strong>，每行每列數量各半。<br />
+            同一行或列不能連續三個相同數字。<br />
+            每行和每列都不能重複。
           </p>
         </div>
 
         <div class="panel__group">
           <span class="panel__legend">操作</span>
+          <p class="hint">點擊空白格循環切換：空 → 0 → 1 → 空。</p>
+        </div>
+
+        <div class="panel__group">
+          <span class="panel__legend">圖例</span>
           <p class="hint">
-            點擊空白格循環切換：空 → 0 → 1 → 空。<br />
-            紅色邊框表示目前有衝突。深色格為題目給定，無法修改。
+            紅框 = 有衝突。<br />
+            深色格 = 題目給定，不能修改。
           </p>
         </div>
       </aside>

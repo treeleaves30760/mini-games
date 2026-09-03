@@ -82,7 +82,7 @@ function checkWin() {
   nextTick(() => {
     if (!puzzle.value || !isEquationMazeSolved(puzzle.value, selected.value)) return;
     won.value = true;
-    overlay.title = "路徑成立！";
+    overlay.title = "路徑成立";
     overlay.sub = `${currentTokens.value.join(" ")} = ${formatRat(puzzle.value.target)}`;
     overlay.open = true;
     emit("solved", {});
@@ -97,7 +97,7 @@ onMounted(generate);
     <GameTopbar title="等式迷宮" title-en="Equation Maze">
       <template #actions>
         <button class="btn" :disabled="selected.length === 0 || won" @click="undo">退一步</button>
-        <button class="btn btn--accent" @click="generate">新迷宮</button>
+        <button class="btn btn--accent" @click="generate">{{ daily ? "重來" : "新迷宮" }}</button>
       </template>
     </GameTopbar>
 
@@ -176,9 +176,10 @@ onMounted(generate);
           </div>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            從任一數字格開始，沿相鄰格走出「數字、符號、數字」交錯的路徑。算出的結果必須等於目標。
+            從數字格出發，走出數字、符號交錯的路徑。
+            算出的結果要等於目標。
           </p>
         </div>
         <div class="panel__group">

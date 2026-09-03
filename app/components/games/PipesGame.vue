@@ -254,8 +254,8 @@ function bitCount(mask) {
           <!-- Win overlay -->
           <div class="overlay" :class="{ 'is-open': overlay.open }">
             <div class="overlay__card">
-              <h2 class="overlay__title">接通了！</h2>
-              <p class="overlay__sub">用 {{ moves }} 步接通整個水路！</p>
+              <h2 class="overlay__title">接通了</h2>
+              <p class="overlay__sub">用 {{ moves }} 步接通</p>
               <div class="overlay__actions">
                 <button v-if="!props.daily" class="btn btn--accent" @click="newPuzzle">再來一局</button>
                 <button class="btn" @click="overlay.open = false">關閉</button>
@@ -281,9 +281,9 @@ function bitCount(mask) {
       <!-- Side panel -->
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">規則</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            點一下旋轉管線。把所有水管接起來、不留任何開口，讓整個盤面都接通中央的水源就過關。
+            點一下旋轉管線。接好所有水管、不留缺口，接通中央水源即過關。
           </p>
         </div>
 
@@ -304,7 +304,7 @@ function bitCount(mask) {
         </div>
 
         <div class="panel__group">
-          <span class="panel__legend">戰績 / 狀態</span>
+          <span class="panel__legend">狀態</span>
           <div class="stats-list">
             <div class="stats-row">
               <span class="stats-label">盤面大小</span>
@@ -321,7 +321,7 @@ function bitCount(mask) {
             <div class="stats-row">
               <span class="stats-label">狀態</span>
               <span class="stats-val" :class="gameWon ? 'is-accent' : ''">
-                {{ gameWon ? '完成！' : '進行中' }}
+                {{ gameWon ? '完成' : '進行中' }}
               </span>
             </div>
           </div>

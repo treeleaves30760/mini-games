@@ -82,7 +82,7 @@ function checkWin() {
   nextTick(() => {
     if (!status.value.solved) return;
     won.value = true;
-    overlay.title = "函數命中！";
+    overlay.title = "函數命中";
     overlay.sub = `${formula.value} 通過所有目標點。`;
     overlay.open = true;
     emit("solved", {});
@@ -96,7 +96,7 @@ onMounted(generate);
   <div class="game-page" :style="{ '--accent': accent }">
     <GameTopbar title="座標射擊" title-en="Function Runner">
       <template #actions>
-        <button class="btn btn--accent" @click="generate">新題目</button>
+        <button class="btn btn--accent" @click="generate">{{ daily ? "重來" : "新題目" }}</button>
       </template>
     </GameTopbar>
 
@@ -190,6 +190,13 @@ onMounted(generate);
           </div>
         </div>
         <div class="panel__group">
+          <span class="panel__legend">玩法</span>
+          <p class="hint">
+            調整係數，讓曲線通過所有亮點。<br />
+            遇到叉號阻擋點，曲線不能穿過。
+          </p>
+        </div>
+        <div class="panel__group">
           <span class="panel__legend">係數</span>
           <div v-for="key in coeffList" :key="key" class="coeff-row">
             <span>{{ key }}</span>
@@ -197,12 +204,6 @@ onMounted(generate);
             <strong>{{ coeffs[key] }}</strong>
             <button :aria-label="`${key} 加一`" @click="adjust(key, 1)">+</button>
           </div>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">目標點</span>
-          <p class="hint">
-            調整係數，讓曲線通過所有亮點；若有叉號阻擋點，曲線不能穿過它們。
-          </p>
         </div>
       </aside>
     </div>

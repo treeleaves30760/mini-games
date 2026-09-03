@@ -159,15 +159,15 @@ onMounted(() => {
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Level</span>
+            <span class="chip__label">難度</span>
             <span class="chip__value is-accent">{{ diffLabel }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Remaining</span>
+            <span class="chip__label">剩餘</span>
             <span class="chip__value">{{ remaining }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Cleared</span>
+            <span class="chip__label">已清除</span>
             <span class="chip__value">{{ cleared }}</span>
           </div>
         </div>
@@ -191,8 +191,8 @@ onMounted(() => {
 
           <div class="overlay" :class="{ 'is-open': won }">
             <div class="overlay__card">
-              <h2 class="overlay__title">全部清空！</h2>
-              <p class="overlay__sub">難度 {{ diffLabel }}　·　漂亮，所有箭頭都離開了。</p>
+              <h2 class="overlay__title">全部清空</h2>
+              <p class="overlay__sub">難度{{ diffLabel }}，已過關 {{ cleared }} 次</p>
               <div class="overlay__actions">
                 <button class="btn btn--accent" @click="newGame()">再來一局</button>
               </div>
@@ -214,24 +214,14 @@ onMounted(() => {
               {{ d.label }}
             </button>
           </div>
-          <p class="hint">切換難度會開始新的一局。</p>
         </div>
 
         <div class="panel__group">
           <span class="panel__legend">玩法</span>
           <p class="hint">
-            每個箭頭可能長短不一、還會轉彎，甚至繞住別的箭頭。點一下，
-            整條箭頭會朝箭頭方向一起滑出畫面——但只有當「它每一節的前方、
-            直到邊界都淨空」時才走得掉。被擋住的箭頭點了會晃一下。
-            把全部箭頭清空即過關。
-          </p>
-        </div>
-
-        <div class="panel__group">
-          <span class="panel__legend">小提示</span>
-          <p class="hint">
-            先清掉最外圈、前方完全淨空的箭頭，騰出空間，被包在裡層的箭頭才有路可走。
-            轉彎的長箭頭要逐節檢查前方是否都通。卡關時可按「提示」。
+            點擊箭頭，朝箭頭方向滑出畫面。
+            前方到邊界都淨空才滑得出去。
+            清空所有箭頭即過關。
           </p>
         </div>
       </aside>

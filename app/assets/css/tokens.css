@@ -1,106 +1,82 @@
 /* =========================================================================
-   Design Tokens — NEON ARCADE / retro-future CRT.
-   One source of truth for color, type, glow, spacing, motion.
+   Design tokens.
+   One source of truth for colour, type, radius, elevation and motion.
 
-   Token NAMES are a stable contract consumed by all 35 game components
-   (--accent, --ink-*, --text*, --line*, --font-*, --r-*, --shadow-*, --ease*,
-   --dur*). Values change; names do not.
+   Token NAMES are a stable contract used by every game component
+   (--accent, --ink-*, --text*, --line*, --font-*, --r-*, --shadow-*,
+   --glow*, --ease*, --dur*). Values may change; names must not.
    ========================================================================= */
 
 :root {
-  /* ---- Void / surfaces — deep CRT indigo-black, faint blue-violet cast ---- */
-  --ink-900: #07071a; /* the void — page base */
-  --ink-850: #0a0a22;
-  --ink-800: #0e0e2b; /* card / surface base */
-  --ink-700: #16163c; /* raised surface */
-  --ink-600: #20204f;
-  --ink-500: #2c2c66;
-  --ink-400: #3a3a82;
+  color-scheme: dark;
 
-  --line: rgba(150, 170, 255, 0.12);
-  --line-strong: rgba(160, 180, 255, 0.26);
+  /* ---- Surfaces: warm graphite. 900 is the page, 800 a panel, 700 a
+     raised control. Games paint their boards with these too. ---- */
+  --ink-950: #0e0d10;
+  --ink-900: #141317;
+  --ink-850: #19181d;
+  --ink-800: #1f1e24;
+  --ink-700: #2a292f;
+  --ink-600: #36353c;
+  --ink-500: #46454d;
+  --ink-400: #5c5b64;
 
-  /* ---- Text — cool phosphor white fading to faint periwinkle ---- */
-  --text: #ecf1ff;
-  --text-dim: #9aa3d4;
-  --text-faint: #616aa3;
+  --line: rgba(255, 246, 232, 0.08);
+  --line-strong: rgba(255, 246, 232, 0.17);
 
-  /* ---- Neon spectrum — the arcade's signature glow colors ---- */
-  --neon-cyan: #2bf3ff;
-  --neon-magenta: #ff3ca6;
-  --neon-yellow: #ffe14d;
-  --neon-green: #5dff9b;
-  --neon-violet: #b388ff;
-  --neon-blue: #5a8bff;
-  --neon-orange: #ff9b3d;
+  /* ---- Text: warm off-white, two dimmer steps ---- */
+  --text: #f2eee7;
+  --text-dim: #aba69d;
+  --text-faint: #77726a;
 
-  /* ---- Per-game signature accents (neon-tuned) ---- */
-  --acc-snake: #5dff9b; /* neon lime  */
-  --acc-sudoku: #2bf3ff; /* neon cyan  */
-  --acc-oneline: #ff9b3d; /* neon amber */
-  --acc-memory: #ff3ca6; /* neon rose  */
-  --acc-2048: #b388ff; /* neon violet */
-
-  /* Generic accent — pages override --accent with their game color */
-  --accent: #2bf3ff;
-  --accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
-  --accent-ink: #05030f; /* near-black ink that sits on a neon fill */
+  /* ---- Accent: every game page overrides --accent with its own colour.
+     The chrome itself stays neutral; colour comes from the game. ---- */
+  --accent: #8ab4ff;
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --accent-ink: #141317;
 
   /* ---- Typography ----
-     display : Chakra Petch — techno arcade, headings / titles / buttons
-     body    : Noto Sans TC — Chinese + running text
-     mono    : Space Mono — HUD numerals / code (tabular, stable metrics)
-     pixel   : Press Start 2P — tiny pixel labels (eyebrows / tags / badges)
-     marquee : Monoton — the neon-tube hero wordmark only */
-  --font-display: "Chakra Petch", "Noto Sans TC", system-ui, sans-serif;
-  --font-body: "Noto Sans TC", "Chakra Petch", system-ui, sans-serif;
-  --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
-  --font-pixel: "Press Start 2P", "Space Mono", monospace;
-  --font-marquee: "Monoton", "Chakra Petch", cursive;
+     display : Huninn (粉圓) — site name, headings, game names. Regular only,
+               so hierarchy comes from size, not weight.
+     body    : Noto Sans TC — everything functional: rules, labels, buttons,
+               numerals (tabular). --font-mono is kept as an alias for the
+               components that use it for board numerals. */
+  --font-display: "Huninn", "Noto Sans TC", system-ui, sans-serif;
+  --font-body: "Noto Sans TC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Noto Sans TC", system-ui, sans-serif;
 
-  /* fluid type scale */
-  --fs-eyebrow: clamp(0.54rem, 2.2vw, 0.8rem);
-  --fs-body: 1.05rem;
-  --fs-lead: clamp(1.05rem, 1.6vw, 1.28rem);
-  --fs-h3: clamp(1.25rem, 2.2vw, 1.6rem);
-  --fs-h2: clamp(1.8rem, 4vw, 2.8rem);
-  --fs-h1: clamp(2.6rem, 7vw, 5.5rem);
+  --fs-eyebrow: 0.8rem;
+  --fs-body: 1rem;
+  --fs-lead: 1.08rem;
+  --fs-h3: 1.15rem;
+  --fs-h2: clamp(1.35rem, 2.4vw, 1.6rem);
+  --fs-h1: clamp(1.7rem, 3.4vw, 2.2rem);
 
-  /* ---- Spacing / radius — arcade cabinets read crisper at tighter radii ---- */
+  /* ---- Radius ---- */
   --r-xs: 6px;
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 20px;
-  --r-xl: 28px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
   --r-pill: 999px;
 
-  /* ---- Elevation ---- */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-2: 0 18px 48px -22px rgba(0, 0, 0, 0.85);
-  --shadow-3: 0 36px 90px -34px rgba(0, 0, 0, 0.92);
+  /* ---- Elevation: flat by default; boards get a soft drop ---- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 10px 30px -18px rgba(0, 0, 0, 0.7);
+  --shadow-3: 0 24px 60px -28px rgba(0, 0, 0, 0.8);
 
-  /* ---- Neon glow — driven by the current --accent so it tints per game ---- */
-  --glow-sm: 0 0 6px color-mix(in oklab, var(--accent) 55%, transparent);
-  --glow:
-    0 0 4px color-mix(in oklab, var(--accent) 70%, transparent),
-    0 0 16px color-mix(in oklab, var(--accent) 42%, transparent);
-  --glow-lg:
-    0 0 6px color-mix(in oklab, var(--accent) 85%, transparent),
-    0 0 26px color-mix(in oklab, var(--accent) 52%, transparent),
-    0 0 60px color-mix(in oklab, var(--accent) 26%, transparent);
-  --text-glow:
-    0 0 8px color-mix(in oklab, var(--accent) 55%, transparent),
-    0 0 22px color-mix(in oklab, var(--accent) 30%, transparent);
-
-  /* ---- Atmosphere — CRT grid + scanline geometry ---- */
-  --grid-color: rgba(120, 140, 255, 0.06);
-  --grid-size: 46px;
-  --scanline-color: rgba(120, 150, 255, 0.5);
+  /* ---- Focus / selection rings. Components still reference the old
+     "glow" names; they now resolve to quiet accent rings. ---- */
+  --glow-sm: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+  --glow: 0 0 0 3px color-mix(in oklab, var(--accent) 40%, transparent);
+  --glow-md: 0 0 0 3px color-mix(in oklab, var(--accent) 40%, transparent);
+  --glow-lg: 0 0 0 4px color-mix(in oklab, var(--accent) 45%, transparent);
+  --text-glow: none;
 
   /* ---- Motion ---- */
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur-fast: 0.16s;
-  --dur: 0.3s;
-  --dur-slow: 0.6s;
+  --dur-fast: 0.14s;
+  --dur: 0.24s;
+  --dur-slow: 0.5s;
 }

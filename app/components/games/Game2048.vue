@@ -204,11 +204,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
       <div class="stage__main">
         <div class="hud">
           <div class="chip">
-            <span class="chip__label">Score</span>
+            <span class="chip__label">分數</span>
             <span class="chip__value is-accent">{{ score }}</span>
           </div>
           <div class="chip">
-            <span class="chip__label">Best</span>
+            <span class="chip__label">最佳</span>
             <span class="chip__value">{{ best }}</span>
           </div>
         </div>
@@ -231,9 +231,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 
           <div class="overlay" :class="{ 'is-open': overlay.open }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ overlay.kind === "win" ? "達成 2048！" : "遊戲結束" }}</h2>
+              <h2 class="overlay__title">{{ overlay.kind === "win" ? "達成 2048" : "遊戲結束" }}</h2>
               <p class="overlay__sub">
-                {{ overlay.kind === "win" ? `得分 ${score}，要繼續挑戰更大數字嗎？` : `本局得分 ${score}　·　最佳 ${best}` }}
+                {{ `得分 ${score}，最佳 ${best}` }}
               </p>
               <div class="overlay__actions">
                 <button v-if="overlay.kind === 'win'" class="btn" @click="keepPlaying = true">繼續</button>
@@ -246,17 +246,18 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 
       <aside class="panel">
         <div class="panel__group">
-          <span class="panel__legend">操作方式</span>
+          <span class="panel__legend">玩法</span>
           <p class="hint">
-            移動方塊：<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><br />
-            行動裝置：在棋盤上往四個方向滑動。
+            同方向的方塊會滑動，相同數字相撞即合併。
+            合出 <strong>2048</strong> 即獲勝。
+            棋盤填滿且無法移動時，遊戲結束。
           </p>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">玩法</span>
+          <span class="panel__legend">操作</span>
           <p class="hint">
-            每次移動，所有方塊往該方向滑動；兩個相同數字相撞會合併相加。
-            目標是合出 <strong>2048</strong>。當棋盤填滿且無法再合併即結束。
+            移動方塊：<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><br />
+            觸控：滑動
           </p>
         </div>
       </aside>

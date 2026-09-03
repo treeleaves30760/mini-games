@@ -206,13 +206,13 @@ onMounted(() => {
 
           <div class="overlay" :class="{ 'is-open': overlay.open }">
             <div class="overlay__card">
-              <h2 class="overlay__title">{{ overlay.optimal ? "完美解法！" : "完成！" }}</h2>
+              <h2 class="overlay__title">{{ overlay.optimal ? "完美解法" : "完成" }}</h2>
               <p class="overlay__sub">
                 <template v-if="overlay.optimal">
-                  以最少 {{ optimal }} 步完成，太厲害了！
+                  以最少 {{ optimal }} 步完成。
                 </template>
                 <template v-else-if="daily">
-                  共走了 {{ moves }} 步，今日挑戰完成！
+                  共走了 {{ moves }} 步，今日挑戰完成。
                 </template>
                 <template v-else>
                   共走了 {{ moves }} 步（最優 {{ optimal }} 步）。
@@ -257,13 +257,6 @@ onMounted(() => {
           <p class="hint">
             滑鼠點擊或鍵盤 <kbd>Enter</kbd> / <kbd>空白鍵</kbd> 選擇柱子。<br />
             <kbd>Tab</kbd> 切換焦點柱子。
-          </p>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">趣知識</span>
-          <p class="hint">
-            N 片的最少步數是 2<sup>N</sup>−1。<br />
-            傳說中有 64 片的神廟版本，需要移動超過 1800 億億步！
           </p>
         </div>
       </aside>

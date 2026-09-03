@@ -213,8 +213,8 @@ onBeforeUnmount(() => { stopTimer(); });
           :class="{ 'btn--accent': flagMode }"
           :aria-pressed="flagMode"
           @click="flagMode = !flagMode"
-        >🚩 標記</button>
-        <button class="btn btn--accent" @click="newGame">新遊戲</button>
+        >標記</button>
+        <button class="btn btn--accent" @click="newGame">{{ daily ? "重來" : "新遊戲" }}</button>
       </template>
     </GameTopbar>
 
@@ -264,17 +264,17 @@ onBeforeUnmount(() => { stopTimer(); });
           <div class="overlay" :class="{ 'is-open': gameState === 'won' || gameState === 'lost' }">
             <div class="overlay__card">
               <h2 class="overlay__title">
-                {{ gameState === 'won' ? (daily ? '完成！' : '🎉 過關！') : '💥 踩到了！' }}
+                {{ gameState === 'won' ? (daily ? '完成' : '過關') : '踩到地雷' }}
               </h2>
               <p class="overlay__sub">
                 <template v-if="gameState === 'won' && daily">
                   今日挑戰完成，用時 {{ elapsed }} 秒。
                 </template>
                 <template v-else-if="gameState === 'won'">
-                  恭喜！用時 {{ elapsed }} 秒，成功排雷。
+                  用時 {{ elapsed }} 秒。
                 </template>
                 <template v-else>
-                  不小心踩到地雷了，再試一次吧！
+                  用時 {{ elapsed }} 秒。
                 </template>
               </p>
               <div class="overlay__actions">
@@ -304,22 +304,18 @@ onBeforeUnmount(() => { stopTimer(); });
           <span class="panel__legend">玩法</span>
           <p class="hint">
             點擊格子翻開，避開所有地雷。<br />
-            右鍵（或點「🚩 標記」後點擊）可在格子上插旗，標記疑似地雷位置。<br />
-            翻開所有安全格即過關。
+            右鍵（或點「標記」後點擊）插旗標記疑似地雷。<br />
+            翻開所有安全格即過關，盤面保證可推理解開，不必猜。
           </p>
         </div>
         <div class="panel__group">
-          <span class="panel__legend">數字顏色</span>
+          <span class="panel__legend">圖例</span>
           <div class="num-legend">
             <span v-for="n in 8" :key="n" :style="{ color: countColors[n] }" class="num-badge">
               {{ n }}
             </span>
           </div>
-          <p class="hint">數字代表周圍 8 格中有幾顆地雷。</p>
-        </div>
-        <div class="panel__group">
-          <span class="panel__legend">小提示</span>
-          <p class="hint">開局會自動翻開中央的安全區域；盤面產生時已確認只靠數字推理就能全部解開，不必猜運氣。</p>
+          <p class="hint">數字代表周圍 8 格的地雷數。</p>
         </div>
       </aside>
     </div>
