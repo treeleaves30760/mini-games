@@ -1,129 +1,215 @@
-import type { Rng } from "~/utils/rng";
+/* =========================================================================
+   Function Runner (座標射擊) — pure game logic.
 
-export type FunctionRunnerDifficultyKey = "easy" | "normal" | "hard" | "expert";
-export type FunctionKind = "line" | "quadratic";
+   The player types f(x). The shot is the curve y = y0 + f(t) − f(0) traced
+   from the shooter (x0, y0) in direction `dir` (t ≥ 0): it destroys every
+   target it passes within TARGET_RADIUS of, keeps going, and stops at the
+   first obstacle cell it enters, blasting a crater of CRATER_RADIUS around
+   the impact point. Solo puzzles are generated from hidden solution curves
+   so every round is solvable within its shot budget; the hot-seat PVP mode
+   reuses the same simulation with two sides of units.
 
-export interface FunctionRunnerDifficulty {
-  key: FunctionRunnerDifficultyKey;
-  label: string;
-  kind: FunctionKind;
-  range: number;
-  targets: number;
-  blockers: number;
-}
+   Obstacles live on a grid of CELL-sized squares indexed row * cols + col.
+   ========================================================================= */
 
 export interface Point {
   x: number;
   y: number;
 }
 
-export interface FunctionCoefficients {
-  a: number;
-  b: number;
-  c: number;
+export interface Board {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  cell: number;
 }
 
-export interface FunctionRunnerPuzzle {
-  difficulty: FunctionRunnerDifficultyKey;
-  kind: FunctionKind;
-  range: number;
-  solution: FunctionCoefficients;
-  targets: Point[];
-  blockers: Point[];
+export interface Shooter extends Point {
+  dir: 1 | -1;
 }
 
-export const FUNCTION_RUNNER_DIFFICULTIES: FunctionRunnerDifficulty[] = [
-  { key: "easy", label: "簡單", kind: "line", range: 6, targets: 2, blockers: 0 },
-  { key: "normal", label: "普通", kind: "line", range: 8, targets: 3, blockers: 1 },
-  { key: "hard", label: "困難", kind: "quadratic", range: 8, targets: 3, blockers: 2 },
-  { key: "expert", label: "專家", kind: "quadratic", range: 10, targets: 4, blockers: 3 },
-];
-
-/**
- * How far the +/- buttons let the player push each coefficient. The component
- * clamps to these values, so they bound the player's choice space: a round is
- * only solvable if its hidden solution stays inside them.
- */
-export const FUNCTION_RUNNER_COEFFICIENT_LIMITS: Record<keyof FunctionCoefficients, number> = { a: 3, b: 8, c: 8 };
-
-/**
- * Coefficient values a hidden solution may use, per curve kind. Deliberately a
- * subset of FUNCTION_RUNNER_COEFFICIENT_LIMITS so the curves stay readable.
- */
-const SOLUTION_A: Record<FunctionKind, number[]> = { line: [0], quadratic: [-2, -1, 1, 2] };
-const SOLUTION_B: Record<FunctionKind, number[]> = { line: [-3, -2, -1, 1, 2, 3], quadratic: [-3, -2, -1, 0, 1, 2, 3] };
-const SOLUTION_C = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
-
-/** Targets sit on non-zero xs with |x| <= 5 so their coordinates are easy to read off the grid. */
-const TARGET_X_LIMIT = 5;
-
-export function getFunctionRunnerDifficulty(key: string): FunctionRunnerDifficulty {
-  return FUNCTION_RUNNER_DIFFICULTIES.find((d) => d.key === key) ?? FUNCTION_RUNNER_DIFFICULTIES[1];
+export interface Target extends Point {
+  id: string;
 }
 
-export function evaluateFunction(kind: FunctionKind, coeffs: FunctionCoefficients, x: number): number {
-  if (kind === "line") return coeffs.b * x + coeffs.c;
-  return coeffs.a * x * x + coeffs.b * x + coeffs.c;
+export type ObstacleShape =
+  | { kind: "circle"; cx: number; cy: number; r: number }
+  | { kind: "rect"; cx: number; cy: number; w: number; h: number };
+
+export const CELL = 0.5;
+export const SOLO_BOARD: Board = { minX: 0, maxX: 20, minY: -8, maxY: 8, cell: CELL };
+export const PVP_BOARD: Board = { minX: -10, maxX: 10, minY: -8, maxY: 8, cell: CELL };
+export const SOLO_SHOOTER: Shooter = { x: 0, y: 0, dir: 1 };
+export const TARGET_RADIUS = 0.4;
+export const CRATER_RADIUS = 1.1;
+export const SHOT_STEP = 0.02;
+/** Sub-sampling distance for obstacle checks along one path segment: a quarter cell. */
+const COLLISION_STEP = CELL / 4;
+
+/* ---------------------------------------------------------------------------
+   Cells
+   --------------------------------------------------------------------------- */
+
+export function boardCols(board: Board): number {
+  return Math.round((board.maxX - board.minX) / board.cell);
 }
 
-/** Candidate target xs whose y on this curve is still on the visible board. */
-function targetXsOnBoard(kind: FunctionKind, coeffs: FunctionCoefficients, range: number): number[] {
-  const limit = Math.min(TARGET_X_LIMIT, range);
-  const xs: number[] = [];
-  for (let x = -limit; x <= limit; x++) {
-    if (x !== 0 && Math.abs(evaluateFunction(kind, coeffs, x)) <= range) xs.push(x);
+export function boardRows(board: Board): number {
+  return Math.round((board.maxY - board.minY) / board.cell);
+}
+
+/** Index of the cell containing (x, y), or -1 outside the board. */
+export function cellIndexAt(board: Board, x: number, y: number): number {
+  const col = Math.floor((x - board.minX) / board.cell);
+  const row = Math.floor((y - board.minY) / board.cell);
+  if (col < 0 || row < 0 || col >= boardCols(board) || row >= boardRows(board)) return -1;
+  return row * boardCols(board) + col;
+}
+
+export function cellCenter(board: Board, index: number): Point {
+  const cols = boardCols(board);
+  const col = index % cols;
+  const row = Math.floor(index / cols);
+  return { x: board.minX + (col + 0.5) * board.cell, y: board.minY + (row + 0.5) * board.cell };
+}
+
+/** Visit every on-board cell whose centre could lie within `radius` of the box [x0, x1] × [y0, y1]. */
+function forCellsNear(board: Board, x0: number, x1: number, y0: number, y1: number, radius: number, visit: (index: number, center: Point) => void): void {
+  const cols = boardCols(board);
+  const rows = boardRows(board);
+  const colFrom = Math.max(0, Math.floor((x0 - radius - board.minX) / board.cell));
+  const colTo = Math.min(cols - 1, Math.floor((x1 + radius - board.minX) / board.cell));
+  const rowFrom = Math.max(0, Math.floor((y0 - radius - board.minY) / board.cell));
+  const rowTo = Math.min(rows - 1, Math.floor((y1 + radius - board.minY) / board.cell));
+  for (let row = rowFrom; row <= rowTo; row++) {
+    for (let col = colFrom; col <= colTo; col++) {
+      const index = row * cols + col;
+      visit(index, cellCenter(board, index));
+    }
   }
-  return xs;
 }
 
-/** Every curve the generator may draw for a difficulty: those with room for all of its targets. */
-function solutionPool(difficulty: FunctionRunnerDifficulty): FunctionCoefficients[] {
-  const pool: FunctionCoefficients[] = [];
-  for (const a of SOLUTION_A[difficulty.kind]) {
-    for (const b of SOLUTION_B[difficulty.kind]) {
-      for (const c of SOLUTION_C) {
-        const coeffs = { a, b, c };
-        if (targetXsOnBoard(difficulty.kind, coeffs, difficulty.range).length >= difficulty.targets) pool.push(coeffs);
+/** Cells whose centre lies inside the shape (on-board only), ascending. */
+export function rasterize(board: Board, shape: ObstacleShape): number[] {
+  const halfW = shape.kind === "circle" ? shape.r : shape.w / 2;
+  const halfH = shape.kind === "circle" ? shape.r : shape.h / 2;
+  const cells: number[] = [];
+  forCellsNear(board, shape.cx, shape.cx, shape.cy, shape.cy, Math.max(halfW, halfH), (index, c) => {
+    const inside =
+      shape.kind === "circle"
+        ? Math.hypot(c.x - shape.cx, c.y - shape.cy) <= shape.r
+        : Math.abs(c.x - shape.cx) <= shape.w / 2 && Math.abs(c.y - shape.cy) <= shape.h / 2;
+    if (inside) cells.push(index);
+  });
+  return cells;
+}
+
+/* ---------------------------------------------------------------------------
+   Geometry
+   --------------------------------------------------------------------------- */
+
+export function distancePointToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/* ---------------------------------------------------------------------------
+   Shot simulation
+   --------------------------------------------------------------------------- */
+
+export type ShotEnd = "edge" | "top" | "bottom" | "obstacle" | "undefined";
+
+export interface ShotResult {
+  /** The drawn polyline, starting at the shooter (absolute coordinates). */
+  path: Point[];
+  /** Ids of the targets destroyed, in the order they were passed. */
+  hits: string[];
+  /** Where the shot hit an obstacle, if it did. */
+  impact: Point | null;
+  /** Obstacle cells removed by the crater, ascending. */
+  cleared: number[];
+  end: ShotEnd;
+}
+
+/** First point along a → b (excluding a) that lies inside an obstacle cell. */
+function firstObstacleAlong(board: Board, obstacles: ReadonlySet<number>, a: Point, b: Point): Point | null {
+  const samples = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / COLLISION_STEP));
+  for (let k = 1; k <= samples; k++) {
+    const p = { x: a.x + ((b.x - a.x) * k) / samples, y: a.y + ((b.y - a.y) * k) / samples };
+    const index = cellIndexAt(board, p.x, p.y);
+    if (index >= 0 && obstacles.has(index)) return p;
+  }
+  return null;
+}
+
+/** Obstacle cells within CRATER_RADIUS of the impact point, ascending. */
+export function craterCells(board: Board, obstacles: ReadonlySet<number>, impact: Point): number[] {
+  const cells: number[] = [];
+  forCellsNear(board, impact.x, impact.x, impact.y, impact.y, CRATER_RADIUS, (index, c) => {
+    if (obstacles.has(index) && Math.hypot(c.x - impact.x, c.y - impact.y) <= CRATER_RADIUS) cells.push(index);
+  });
+  return cells;
+}
+
+/**
+ * Trace one shot. Pure: returns what happened and which cells the crater
+ * would remove, without touching `obstacles` or `targets`.
+ */
+export function simulateShot(
+  board: Board,
+  obstacles: ReadonlySet<number>,
+  targets: readonly Target[],
+  shooter: Shooter,
+  f: (x: number) => number,
+): ShotResult {
+  const start: Point = { x: shooter.x, y: shooter.y };
+  const result: ShotResult = { path: [start], hits: [], impact: null, cleared: [], end: "edge" };
+  const f0 = f(0);
+  if (!Number.isFinite(f0)) {
+    result.end = "undefined";
+    return result;
+  }
+  const reach = shooter.dir > 0 ? board.maxX - shooter.x : shooter.x - board.minX;
+  const steps = Math.round(reach / SHOT_STEP);
+  const hit = new Set<string>();
+  let prev = start;
+  for (let i = 1; i <= steps; i++) {
+    const t = i * SHOT_STEP;
+    const y = shooter.y + f(t) - f0;
+    if (!Number.isFinite(y)) {
+      result.end = "undefined";
+      break;
+    }
+    let next: Point = { x: shooter.x + shooter.dir * t, y };
+    let last = false;
+    if (y > board.maxY || y < board.minY) {
+      const bound = y > board.maxY ? board.maxY : board.minY;
+      const ratio = (bound - prev.y) / (y - prev.y);
+      next = { x: prev.x + (next.x - prev.x) * ratio, y: bound };
+      result.end = bound === board.maxY ? "top" : "bottom";
+      last = true;
+    }
+    const impact = firstObstacleAlong(board, obstacles, prev, next);
+    if (impact) {
+      next = impact;
+      result.impact = impact;
+      result.cleared = craterCells(board, obstacles, impact);
+      result.end = "obstacle";
+      last = true;
+    }
+    for (const target of targets) {
+      if (!hit.has(target.id) && distancePointToSegment(target, prev, next) <= TARGET_RADIUS) {
+        hit.add(target.id);
+        result.hits.push(target.id);
       }
     }
+    result.path.push(next);
+    prev = next;
+    if (last) break;
   }
-  return pool;
-}
-
-/**
- * Build the round from its answer: draw a curve, put the targets on it and the
- * blockers off it. Every round is therefore solvable with the curve it was built
- * from and always has exactly the target/blocker counts of its difficulty.
- */
-export function generateFunctionRunnerPuzzle(rng: Rng, difficultyKey = "normal"): FunctionRunnerPuzzle {
-  const difficulty = getFunctionRunnerDifficulty(difficultyKey);
-  const { kind, range } = difficulty;
-  const solution = rng.pick(solutionPool(difficulty));
-  const xs = rng.shuffle(targetXsOnBoard(kind, solution, range)).slice(0, difficulty.targets).sort((a, b) => a - b);
-  const targets = xs.map((x) => ({ x, y: evaluateFunction(kind, solution, x) }));
-
-  // Cells the solution curve misses can neither coincide with a target nor block the answer.
-  const offCurve: Point[] = [];
-  for (let x = -range; x <= range; x++) {
-    for (let y = -range; y <= range; y++) {
-      if (evaluateFunction(kind, solution, x) !== y) offCurve.push({ x, y });
-    }
-  }
-  const blockers = rng.shuffle(offCurve).slice(0, difficulty.blockers);
-
-  return { difficulty: difficulty.key, kind, range, solution, targets, blockers };
-}
-
-export function hitsPoint(kind: FunctionKind, coeffs: FunctionCoefficients, point: Point): boolean {
-  return evaluateFunction(kind, coeffs, point.x) === point.y;
-}
-
-export function functionRunnerStatus(puzzle: FunctionRunnerPuzzle, coeffs: FunctionCoefficients): { hits: number; blocked: number; solved: boolean } {
-  const hits = puzzle.targets.filter((point) => hitsPoint(puzzle.kind, coeffs, point)).length;
-  const blocked = puzzle.blockers.filter((point) => hitsPoint(puzzle.kind, coeffs, point)).length;
-  return {
-    hits,
-    blocked,
-    solved: hits === puzzle.targets.length && blocked === 0,
-  };
+  return result;
 }
